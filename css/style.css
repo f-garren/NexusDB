@@ -344,6 +344,13 @@ textarea:focus {
     box-shadow: 0 0 0 3px rgba(44, 90, 160, 0.1);
 }
 
+input[readonly],
+input.readonly-field {
+    background-color: var(--light-bg);
+    cursor: not-allowed;
+    color: var(--text-muted);
+}
+
 textarea {
     resize: vertical;
     min-height: 100px;

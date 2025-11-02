@@ -101,7 +101,7 @@ include 'header.php';
                 echo '<tr>';
                 echo '<td>' . htmlspecialchars($customer['name']) . '</td>';
                 echo '<td>' . htmlspecialchars($customer['phone']) . '</td>';
-                echo '<td>' . date('M d, Y', strtotime($customer['signup_date'])) . '</td>';
+                echo '<td>' . date('M d, Y g:i A', strtotime($customer['signup_date'])) . '</td>';
                 echo '<td>' . htmlspecialchars($customer['city']) . '</td>';
                 echo '<td>' . $customer['visit_count'] . '</td>';
                 echo '<td><a href="customer_view.php?id=' . $customer['id'] . '" class="btn btn-small">View</a></td>';

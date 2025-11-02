@@ -64,7 +64,7 @@ include 'header.php';
                             <td><?php echo htmlspecialchars($customer['phone']); ?></td>
                             <td><?php echo htmlspecialchars($customer['address']); ?></td>
                             <td><?php echo htmlspecialchars($customer['city'] . ', ' . $customer['state']); ?></td>
-                            <td><?php echo date('M d, Y', strtotime($customer['signup_date'])); ?></td>
+                            <td><?php echo date('M d, Y g:i A', strtotime($customer['signup_date'])); ?></td>
                             <td><?php echo $customer['visit_count']; ?></td>
                             <td>
                                 <a href="customer_view.php?id=<?php echo $customer['id']; ?>" class="btn btn-small">View</a>

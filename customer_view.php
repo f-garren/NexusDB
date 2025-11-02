@@ -113,8 +113,8 @@ include 'header.php';
             <h2>Basic Information</h2>
             <table class="info-table">
                 <tr>
-                    <th>Signup Date:</th>
-                    <td><?php echo date('F d, Y', strtotime($customer['signup_date'])); ?></td>
+                    <th>Signup Date & Time:</th>
+                    <td><?php echo date('F d, Y \a\t g:i A', strtotime($customer['signup_date'])); ?></td>
                 </tr>
                 <tr>
                     <th>Name:</th>

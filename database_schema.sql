@@ -7,7 +7,7 @@ SET time_zone = "+00:00";
 -- Main customers table
 CREATE TABLE IF NOT EXISTS `customers` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
-  `signup_date` date NOT NULL,
+  `signup_date` datetime NOT NULL,
   `name` varchar(255) NOT NULL,
   `spouse` varchar(255) DEFAULT NULL,
   `address` varchar(255) NOT NULL,

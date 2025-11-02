@@ -10,11 +10,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         $db->beginTransaction();
         
-        // Insert customer
+        // Insert customer with automatic signup timestamp
+        $signup_timestamp = date('Y-m-d H:i:s'); // Current system date and time
         $stmt = $db->prepare("INSERT INTO customers (signup_date, name, spouse, address, city, state, zip, phone, description_of_need, applied_before) 
                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
         $stmt->execute([
-            $_POST['signup_date'],
+            $signup_timestamp,
             $_POST['name'],
             !empty($_POST['spouse']) ? $_POST['spouse'] : null,
             $_POST['address'],
@@ -115,8 +116,9 @@ include 'header.php';
             <h2>Basic Information</h2>
             
             <div class="form-group">
-                <label for="signup_date">Date of Sign Up <span class="required">*</span></label>
-                <input type="date" id="signup_date" name="signup_date" value="<?php echo date('Y-m-d'); ?>" required>
+                <label>Sign Up Date & Time</label>
+                <input type="text" value="<?php echo date('F d, Y \a\t g:i A'); ?>" readonly class="readonly-field">
+                <small class="help-text">Automatically recorded from system time</small>
             </div>
             
             <div class="form-group">
@@ -193,22 +195,7 @@ include 'header.php';
             <p class="help-text">List all persons living in the household (name, birthdate, relationship)</p>
             
             <div id="household_members">
-                <div class="household-member">
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Name</label>
-                            <input type="text" name="household_names[]">
-                        </div>
-                        <div class="form-group">
-                            <label>Birthdate</label>
-                            <input type="date" name="household_birthdates[]">
-                        </div>
-                        <div class="form-group">
-                            <label>Relationship</label>
-                            <input type="text" name="household_relationships[]" placeholder="e.g., Son, Daughter, Spouse">
-                        </div>
-                    </div>
-                </div>
+                <!-- Household members will be added here when user clicks "Add Household Member" -->
             </div>
             <button type="button" class="btn btn-secondary btn-small" onclick="addHouseholdMember()">+ Add Household Member</button>
         </div>
@@ -331,7 +318,7 @@ function addHouseholdMember() {
             </div>
             <div class="form-group">
                 <label>&nbsp;</label>
-                <button type="button" class="btn btn-small btn-danger" onclick="this.closest('.household-member').remove(); updateTotalIncome();">Remove</button>
+                <button type="button" class="btn btn-small btn-danger" onclick="this.closest('.household-member').remove();">Remove</button>
             </div>
         </div>
     `;

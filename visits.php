@@ -20,11 +20,16 @@ if ($customer_id) {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $customer_id = $_POST['customer_id'];
-    $visit_date = $_POST['visit_date'];
+    $customer_id = isset($_POST['customer_id']) ? intval($_POST['customer_id']) : 0;
+    $visit_date = $_POST['visit_date'] ?? '';
     $notes = $_POST['notes'] ?? '';
     
     try {
+        // Validate customer_id is provided
+        if (empty($customer_id) || $customer_id <= 0) {
+            throw new Exception("Please select a customer first");
+        }
+        
         // Validate customer exists
         $stmt = $db->prepare("SELECT * FROM customers WHERE id = ?");
         $stmt->execute([$customer_id]);
@@ -32,6 +37,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         if (!$customer) {
             throw new Exception("Customer not found");
+        }
+        
+        // Validate visit_date is provided
+        if (empty($visit_date)) {
+            throw new Exception("Visit date is required");
         }
         
         // Check visit limits
@@ -114,8 +124,8 @@ include 'header.php';
     <form method="POST" action="" class="visit-form">
         <div class="form-group">
             <label for="customer_search">Search Customer <span class="required">*</span></label>
-            <input type="text" id="customer_search" placeholder="Type customer name or phone..." autocomplete="off">
-            <input type="hidden" id="customer_id" name="customer_id" required>
+            <input type="text" id="customer_search" placeholder="Type customer name or phone..." autocomplete="off" value="<?php echo $customer ? htmlspecialchars($customer['name']) : ''; ?>">
+            <input type="hidden" id="customer_id" name="customer_id" value="<?php echo $customer ? $customer['id'] : ''; ?>" required>
             <div id="customer_results" class="search-results"></div>
         </div>
         
