@@ -3,9 +3,7 @@
 # NexusDB Food Distribution System - Setup Script for Ubuntu 24.04
 # This script sets up the web server, database, and configures the application
 # 
-# This script is standalone and will clone the repository from GitHub.
-# It can be run from any directory and does not require local files.
-#
+# This script should be run from within a cloned NexusDB repository directory.
 # Usage: sudo ./setup.sh
 
 set -e  # Exit on error
@@ -37,43 +35,34 @@ fi
 
 print_info "Starting NexusDB setup for Ubuntu 24.04..."
 
-# Repository URL
-REPO_URL="https://github.com/f-garren/NexusDB.git"
-INSTALL_DIR="/opt/nexusdb"
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+INSTALL_DIR="$SCRIPT_DIR"
+
+# Verify we're in a valid NexusDB directory
+if [ ! -f "$INSTALL_DIR/database_schema.sql" ]; then
+    print_error "database_schema.sql not found. Please run this script from the NexusDB repository directory."
+    exit 1
+fi
+
+print_info "Using repository directory: $INSTALL_DIR"
 
 # Step 1: Update system
 print_info "Updating system packages..."
 apt-get update -qq
 apt-get upgrade -y -qq
 
-# Step 2: Install git if not present
-print_info "Installing git..."
-apt-get install -y git
-
-# Step 3: Clone repository
-print_info "Cloning NexusDB repository from GitHub..."
-if [ -d "$INSTALL_DIR" ]; then
-    print_warning "Install directory $INSTALL_DIR already exists. Removing old installation..."
-    rm -rf "$INSTALL_DIR"
-fi
-
-git clone "$REPO_URL" "$INSTALL_DIR" || {
-    print_error "Failed to clone repository. Please check your internet connection and repository URL."
-    exit 1
-}
-
-print_info "Repository cloned successfully to $INSTALL_DIR"
-
-# Step 4: Install necessary packages
+# Step 2: Install necessary packages
 print_info "Installing required packages (Apache, PHP, MySQL)..."
-apt-get install -y apache2 mysql-server php php-mysql php-pdo php-xml php-mbstring php-curl unzip expect
+apt-get install -y apache2 mysql-server php php-mysql php-pdo php-xml php-mbstring php-curl libapache2-mod-php unzip expect
 
-# Step 5: Enable Apache modules
+# Step 3: Enable Apache modules and restart
 print_info "Enabling Apache modules..."
 a2enmod rewrite
-a2enmod php
+systemctl restart apache2
+print_info "Apache restarted after enabling modules"
 
-# Step 6: Generate random MySQL root password
+# Step 4: Generate random MySQL root password
 print_info "Generating secure MySQL root password..."
 MYSQL_ROOT_PASSWORD=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
 DB_NAME="nexusdb"
@@ -95,7 +84,7 @@ chmod 600 "$PASSWORD_FILE"
 
 print_info "Passwords saved to $PASSWORD_FILE (chmod 600)"
 
-# Step 7: Secure MySQL installation and set root password
+# Step 5: Secure MySQL installation and set root password
 print_info "Configuring MySQL..."
 systemctl start mysql
 systemctl enable mysql
@@ -124,7 +113,7 @@ expect eof
 
 echo "$SECURE_MYSQL" > /dev/null
 
-# Step 8: Create database and user
+# Step 6: Create database and user
 print_info "Creating database and user..."
 mysql -u root -p"$MYSQL_ROOT_PASSWORD" <<EOF
 CREATE DATABASE IF NOT EXISTS $DB_NAME CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
@@ -133,7 +122,7 @@ GRANT ALL PRIVILEGES ON $DB_NAME.* TO '$DB_USER'@'localhost';
 FLUSH PRIVILEGES;
 EOF
 
-# Step 9: Import database schema
+# Step 7: Import database schema
 print_info "Importing database schema..."
 SCHEMA_FILE="$INSTALL_DIR/database_schema.sql"
 
@@ -145,7 +134,7 @@ else
     exit 1
 fi
 
-# Step 10: Copy files to web root
+# Step 8: Copy files to web root
 WEB_ROOT="/var/www/html"
 APP_DIR="$WEB_ROOT/nexusdb"
 
@@ -163,7 +152,7 @@ rsync -a --exclude='.git' --exclude='setup.sh' "$INSTALL_DIR/" "$APP_DIR/" || {
     rm -rf "$APP_DIR/.git" "$APP_DIR/setup.sh" 2>/dev/null
 }
 
-# Step 11: Update config.php with database credentials
+# Step 9: Update config.php with database credentials
 print_info "Updating config.php with database credentials..."
 CONFIG_FILE="$APP_DIR/config.php"
 
@@ -182,19 +171,19 @@ else
     exit 1
 fi
 
-# Step 12: Set proper permissions
+# Step 10: Set proper permissions
 print_info "Setting file permissions..."
 chown -R www-data:www-data "$APP_DIR"
 find "$APP_DIR" -type d -exec chmod 755 {} \;
 find "$APP_DIR" -type f -exec chmod 644 {} \;
 chmod 600 "$CONFIG_FILE"
 
-# Step 13: Restart services
-print_info "Restarting Apache..."
+# Step 11: Restart services
+print_info "Restarting services..."
 systemctl restart apache2
 systemctl restart mysql
 
-# Step 14: Display information
+# Step 12: Display information
 print_info "Setup completed successfully!"
 echo ""
 echo "=========================================="
