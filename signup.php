@@ -12,17 +12,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         // Insert customer with automatic signup timestamp
         $signup_timestamp = date('Y-m-d H:i:s'); // Current system date and time
-        $stmt = $db->prepare("INSERT INTO customers (signup_date, name, spouse, address, city, state, zip, phone, description_of_need, applied_before) 
-                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        
+        // Format phone number to +1 (111) 111-1111 format
+        $phone = preg_replace('/[^0-9]/', '', $_POST['phone']); // Remove all non-digits
+        if (strlen($phone) == 10) {
+            $phone = '+1 (' . substr($phone, 0, 3) . ') ' . substr($phone, 3, 3) . '-' . substr($phone, 6);
+        } elseif (strlen($phone) == 11 && substr($phone, 0, 1) == '1') {
+            $phone = '+1 (' . substr($phone, 1, 3) . ') ' . substr($phone, 4, 3) . '-' . substr($phone, 7);
+        } else {
+            $phone = $_POST['phone']; // Keep original if can't format
+        }
+        
+        $stmt = $db->prepare("INSERT INTO customers (signup_date, name, address, city, state, zip, phone, description_of_need, applied_before) 
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
         $stmt->execute([
             $signup_timestamp,
             $_POST['name'],
-            !empty($_POST['spouse']) ? $_POST['spouse'] : null,
             $_POST['address'],
             $_POST['city'],
             $_POST['state'],
             $_POST['zip'],
-            $_POST['phone'],
+            $phone,
             $_POST['description_of_need'],
             $_POST['applied_before']
         ]);
@@ -35,10 +45,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute([$customer_id, $_POST['prev_app_date'], $_POST['prev_app_name']]);
         }
         
-        // Handle household members
-        if (!empty($_POST['household_names'])) {
-            $stmt = $db->prepare("INSERT INTO household_members (customer_id, name, birthdate, relationship) VALUES (?, ?, ?, ?)");
+        // Handle household members (always include the customer as first household member)
+        $stmt = $db->prepare("INSERT INTO household_members (customer_id, name, birthdate, relationship) VALUES (?, ?, ?, ?)");
+        
+        // Always add the customer themselves as "Self" if name is provided
+        if (!empty($_POST['name'])) {
+            $customer_birthdate = !empty($_POST['household_birthdates'][0]) ? $_POST['household_birthdates'][0] : '1900-01-01';
+            $customer_relationship = !empty($_POST['household_relationships'][0]) ? $_POST['household_relationships'][0] : 'Self';
+            
+            $stmt->execute([
+                $customer_id,
+                $_POST['name'],
+                $customer_birthdate,
+                $customer_relationship
+            ]);
+        }
+        
+        // Add additional household members (skip first one as it's the customer)
+        if (!empty($_POST['household_names']) && count($_POST['household_names']) > 1) {
             foreach ($_POST['household_names'] as $index => $name) {
+                if ($index == 0) continue; // Skip first one (customer)
                 if (!empty($name) && !empty($_POST['household_birthdates'][$index]) && !empty($_POST['household_relationships'][$index])) {
                     $stmt->execute([
                         $customer_id,
@@ -126,11 +152,6 @@ include 'header.php';
                 <input type="text" id="name" name="name" required>
             </div>
             
-            <div class="form-group">
-                <label for="spouse">Spouse (if applicable)</label>
-                <input type="text" id="spouse" name="spouse">
-            </div>
-            
             <div class="form-row">
                 <div class="form-group">
                     <label for="address">Address <span class="required">*</span></label>
@@ -170,7 +191,7 @@ include 'header.php';
             <h2>Previous Applications</h2>
             
             <div class="form-group">
-                <label for="applied_before">Have you ever applied for assistance before? <span class="required">*</span></label>
+                <label for="applied_before">Have you ever applied for assistance from <?php echo htmlspecialchars(getSetting('organization_name', 'NexusDB')); ?> before? <span class="required">*</span></label>
                 <select id="applied_before" name="applied_before" required>
                     <option value="no">No</option>
                     <option value="yes">Yes</option>
@@ -192,10 +213,25 @@ include 'header.php';
 
         <div class="form-section">
             <h2>Household Members</h2>
-            <p class="help-text">List all persons living in the household (name, birthdate, relationship)</p>
+            <p class="help-text">List all persons living in the household (name, birthdate, relationship). The person registering is automatically included.</p>
             
             <div id="household_members">
-                <!-- Household members will be added here when user clicks "Add Household Member" -->
+                <div class="household-member">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Name</label>
+                            <input type="text" name="household_names[]" id="household_name_0" placeholder="Auto-filled with customer name">
+                        </div>
+                        <div class="form-group">
+                            <label>Birthdate</label>
+                            <input type="date" name="household_birthdates[]" id="household_birthdate_0">
+                        </div>
+                        <div class="form-group">
+                            <label>Relationship</label>
+                            <input type="text" name="household_relationships[]" id="household_relationship_0" value="Self" readonly class="readonly-field">
+                        </div>
+                    </div>
+                </div>
             </div>
             <button type="button" class="btn btn-secondary btn-small" onclick="addHouseholdMember()">+ Add Household Member</button>
         </div>
@@ -336,6 +372,28 @@ function updateTotalIncome() {
 
 ['child_support', 'pension', 'wages', 'ss_ssd_ssi', 'unemployment', 'food_stamps', 'other'].forEach(field => {
     document.getElementById(field).addEventListener('input', updateTotalIncome);
+});
+
+// Auto-populate first household member with customer name
+document.getElementById('name').addEventListener('input', function() {
+    document.getElementById('household_name_0').value = this.value;
+});
+
+// Format phone number as user types
+document.getElementById('phone').addEventListener('input', function(e) {
+    let value = e.target.value.replace(/[^0-9]/g, '');
+    if (value.length > 0 && value.length <= 11) {
+        if (value.length <= 3) {
+            e.target.value = '+1 (' + value;
+        } else if (value.length <= 6) {
+            e.target.value = '+1 (' + value.substring(0, 3) + ') ' + value.substring(3);
+        } else if (value.length <= 10) {
+            e.target.value = '+1 (' + value.substring(0, 3) + ') ' + value.substring(3, 6) + '-' + value.substring(6);
+        } else {
+            let formatted = '+1 (' + value.substring(value.length - 10, value.length - 7) + ') ' + value.substring(value.length - 7, value.length - 4) + '-' + value.substring(value.length - 4);
+            e.target.value = formatted;
+        }
+    }
 });
 </script>
 

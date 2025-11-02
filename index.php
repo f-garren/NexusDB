@@ -26,7 +26,7 @@ include 'header.php';
 
 <div class="container">
     <div class="page-header">
-        <h1>NexusDB Dashboard</h1>
+        <h1><?php echo htmlspecialchars(getSetting('organization_name', 'NexusDB')); ?> Dashboard</h1>
         <p class="lead">Food Distribution Service Management System</p>
     </div>
 

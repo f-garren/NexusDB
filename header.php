@@ -10,7 +10,7 @@
     <nav class="navbar">
         <div class="container">
             <div class="nav-brand">
-                <a href="index.php">NexusDB</a>
+                <a href="index.php"><?php echo htmlspecialchars(getSetting('organization_name', 'NexusDB')); ?></a>
             </div>
             <ul class="nav-menu">
                 <li><a href="index.php">Dashboard</a></li>
@@ -18,6 +18,7 @@
                 <li><a href="customers.php">Customers</a></li>
                 <li><a href="visits.php">Visits</a></li>
                 <li><a href="reports.php">Reports</a></li>
+                <li><a href="settings.php">Settings</a></li>
             </ul>
         </div>
     </nav>

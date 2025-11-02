@@ -17,9 +17,6 @@ define('APP_VERSION', '1.0.0');
 // Error reporting (set to 0 in production)
 define('DEBUG_MODE', 1);
 
-// Timezone
-date_default_timezone_set('America/New_York');
-
 // Database connection class
 class Database {
     private static $instance = null;
@@ -74,5 +71,14 @@ function setSetting($key, $value) {
     $stmt = $db->prepare("INSERT INTO settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = ?");
     return $stmt->execute([$key, $value, $value]);
 }
+
+// Load timezone from settings if available, otherwise use default
+// This is called after Database class and getSetting function are defined
+try {
+    $timezone = getSetting('timezone', 'America/Boise');
+} catch (Exception $e) {
+    $timezone = 'America/Boise';
+}
+date_default_timezone_set($timezone);
 ?>
 

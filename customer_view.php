@@ -120,12 +120,6 @@ include 'header.php';
                     <th>Name:</th>
                     <td><?php echo htmlspecialchars($customer['name']); ?></td>
                 </tr>
-                <?php if ($customer['spouse']): ?>
-                <tr>
-                    <th>Spouse:</th>
-                    <td><?php echo htmlspecialchars($customer['spouse']); ?></td>
-                </tr>
-                <?php endif; ?>
                 <tr>
                     <th>Address:</th>
                     <td><?php echo htmlspecialchars($customer['address']); ?></td>
@@ -276,7 +270,7 @@ include 'header.php';
                     <tbody>
                         <?php foreach ($visits as $visit): ?>
                             <tr>
-                                <td><?php echo date('M d, Y', strtotime($visit['visit_date'])); ?></td>
+                                <td><?php echo date('M d, Y \a\t g:i A', strtotime($visit['visit_date'])); ?></td>
                                 <td><?php echo nl2br(htmlspecialchars($visit['notes'] ?? '')); ?></td>
                             </tr>
                         <?php endforeach; ?>

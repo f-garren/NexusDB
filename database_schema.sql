@@ -9,7 +9,6 @@ CREATE TABLE IF NOT EXISTS `customers` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `signup_date` datetime NOT NULL,
   `name` varchar(255) NOT NULL,
-  `spouse` varchar(255) DEFAULT NULL,
   `address` varchar(255) NOT NULL,
   `city` varchar(100) NOT NULL,
   `state` varchar(2) NOT NULL,
@@ -87,7 +86,7 @@ CREATE TABLE IF NOT EXISTS `income_sources` (
 CREATE TABLE IF NOT EXISTS `visits` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `customer_id` int(11) NOT NULL,
-  `visit_date` date NOT NULL,
+  `visit_date` datetime NOT NULL,
   `notes` text,
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),

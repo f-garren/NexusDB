@@ -287,6 +287,7 @@ body {
     margin-bottom: 2.5rem;
     padding-bottom: 2rem;
     border-bottom: 2px solid var(--border-color);
+    overflow: hidden;
 }
 
 .form-section:last-of-type {
@@ -493,6 +494,9 @@ textarea {
     padding: 1rem;
     border-radius: 4px;
     margin-bottom: 1rem;
+    border: 1px solid var(--border-color);
+    box-sizing: border-box;
+    overflow: hidden;
 }
 
 .customer-stats {
@@ -581,6 +585,54 @@ textarea {
     text-align: center;
     padding: 1.5rem 0;
     margin-top: 3rem;
+}
+
+/* Settings Page */
+.mode-toggle {
+    background: var(--white);
+    padding: 1.5rem;
+    border-radius: 8px;
+    box-shadow: var(--shadow);
+    margin-bottom: 2rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.current-mode {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+
+.settings-form {
+    background: var(--white);
+    padding: 2rem;
+    border-radius: 8px;
+    box-shadow: var(--shadow);
+}
+
+.settings-section h2 {
+    color: var(--primary-color);
+    margin-bottom: 1.5rem;
+    font-size: 1.5rem;
+}
+
+.settings-section h3 {
+    color: var(--primary-color);
+    margin-bottom: 1rem;
+    margin-top: 1.5rem;
+    font-size: 1.2rem;
+}
+
+.settings-section .form-section {
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.settings-section .form-section:last-of-type {
+    border-bottom: none;
 }
 
 /* Responsive */

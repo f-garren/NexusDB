@@ -39,13 +39,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             throw new Exception("Customer not found");
         }
         
-        // Validate visit_date is provided
-        if (empty($visit_date)) {
-            throw new Exception("Visit date is required");
-        }
+        // Use current timestamp for visit
+        $visit_timestamp = time();
+        $visit_date = date('Y-m-d H:i:s');
         
         // Check visit limits
-        $visit_timestamp = strtotime($visit_date);
         $visit_month = date('Y-m', $visit_timestamp);
         $visit_year = date('Y', $visit_timestamp);
         
@@ -73,15 +71,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $last_visit = $stmt->fetch()['last_visit'];
         
         if ($last_visit) {
-            $days_since = floor((strtotime($visit_date) - strtotime($last_visit)) / 86400);
+            $days_since = floor(($visit_timestamp - strtotime($last_visit)) / 86400);
             if ($days_since < $min_days_between) {
                 throw new Exception("Minimum {$min_days_between} days required between visits. Last visit was {$days_since} days ago.");
             }
         }
         
-        // Insert visit
+        // Insert visit with automatic timestamp
+        $visit_timestamp = date('Y-m-d H:i:s'); // Current system date and time
         $stmt = $db->prepare("INSERT INTO visits (customer_id, visit_date, notes) VALUES (?, ?, ?)");
-        $stmt->execute([$customer_id, $visit_date, $notes]);
+        $stmt->execute([$customer_id, $visit_timestamp, $notes]);
         
         $success = "Visit recorded successfully! <a href='customer_view.php?id=" . $customer_id . "'>View customer</a>";
         
@@ -161,8 +160,10 @@ include 'header.php';
         <?php endif; ?>
 
         <div class="form-group">
-            <label for="visit_date">Visit Date <span class="required">*</span></label>
-            <input type="date" id="visit_date" name="visit_date" value="<?php echo date('Y-m-d'); ?>" required>
+            <label for="visit_date">Visit Date & Time</label>
+            <input type="text" value="<?php echo date('F d, Y \a\t g:i A'); ?>" readonly class="readonly-field">
+            <small class="help-text">Automatically recorded from system time</small>
+            <input type="hidden" name="visit_date" value="<?php echo date('Y-m-d H:i:s'); ?>">
         </div>
 
         <div class="form-group">
