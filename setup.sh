@@ -56,11 +56,27 @@ apt-get upgrade -y -qq
 print_info "Installing required packages (Apache, PHP, MySQL)..."
 apt-get install -y apache2 mysql-server php php-mysql php-pdo php-xml php-mbstring php-curl libapache2-mod-php unzip expect
 
-# Step 3: Enable Apache modules and restart
+# Step 3: Enable Apache modules
 print_info "Enabling Apache modules..."
 a2enmod rewrite
+
+# Detect and enable the correct PHP module version
+PHP_VERSION=$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;' 2>/dev/null || echo "")
+if [ -n "$PHP_VERSION" ]; then
+    print_info "Detected PHP version: $PHP_VERSION"
+    # Try to enable the version-specific PHP module
+    if a2enmod php${PHP_VERSION} 2>/dev/null; then
+        print_info "Enabled PHP module php${PHP_VERSION}"
+    else
+        print_warning "Could not enable php${PHP_VERSION} module explicitly, but libapache2-mod-php should have enabled it automatically"
+    fi
+else
+    print_warning "Could not detect PHP version, but libapache2-mod-php should have enabled PHP module automatically"
+fi
+
+# Restart Apache to apply module changes
+print_info "Restarting Apache to apply module changes..."
 systemctl restart apache2
-print_info "Apache restarted after enabling modules"
 
 # Step 4: Generate random MySQL root password
 print_info "Generating secure MySQL root password..."
