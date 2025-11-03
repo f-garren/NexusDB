@@ -222,7 +222,7 @@ include 'header.php';
     padding-top: 0.75rem;
     padding-bottom: 0.75rem;
     list-style: none;
-    z-index: 1000;
+    z-index: 10000;
     white-space: nowrap;
 }
 
@@ -239,7 +239,7 @@ include 'header.php';
 
 .action-dropdown:hover .action-dropdown-menu,
 .action-dropdown-menu:hover {
-    display: block;
+    display: block !important;
 }
 
 .action-dropdown-menu li {
@@ -256,6 +256,19 @@ include 'header.php';
 
 .action-dropdown-menu a:hover {
     background-color: var(--light-bg);
+}
+
+/* Fix table overflow to allow dropdown to show */
+.table-responsive {
+    overflow: visible !important;
+}
+
+.data-table {
+    overflow: visible !important;
+}
+
+.data-table tbody tr {
+    position: relative;
 }
 </style>
 

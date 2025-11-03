@@ -7,6 +7,37 @@ $error = '';
 $success = '';
 $db = getDB();
 
+// Handle voucher revocation
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['revoke_voucher'])) {
+    $voucher_code = trim($_POST['voucher_code'] ?? '');
+    
+    if (!empty($voucher_code)) {
+        try {
+            // Check if voucher exists and is active
+            $stmt = $db->prepare("SELECT status, customer_id FROM vouchers WHERE voucher_code = ?");
+            $stmt->execute([$voucher_code]);
+            $voucher = $stmt->fetch();
+            
+            if (!$voucher) {
+                $error = "Voucher not found.";
+            } elseif ($voucher['customer_id'] != $customer_id) {
+                $error = "This voucher does not belong to this customer.";
+            } elseif ($voucher['status'] !== 'active') {
+                $error = "Only active vouchers can be revoked.";
+            } else {
+                // Revoke voucher by setting status to expired
+                $stmt = $db->prepare("UPDATE vouchers SET status = 'expired' WHERE voucher_code = ?");
+                $stmt->execute([$voucher_code]);
+                $success = "Voucher {$voucher_code} has been revoked successfully.";
+            }
+        } catch (Exception $e) {
+            $error = "Error revoking voucher: " . $e->getMessage();
+        }
+    } else {
+        $error = "Invalid voucher code.";
+    }
+}
+
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_customer'])) {
     try {
@@ -213,12 +244,12 @@ include 'header.php';
                 <a href="customer_view.php?id=<?php echo $customer_id; ?>&edit=1" class="btn btn-primary">
                     <ion-icon name="create"></ion-icon> Edit <?php echo htmlspecialchars(getCustomerTerm('Customer')); ?>
                 </a>
-                <div class="action-dropdown" style="display: inline-block; position: relative;">
-                    <button class="btn btn-primary" style="position: relative;">Record Visit <ion-icon name="chevron-down" style="font-size: 0.8rem; vertical-align: middle;"></ion-icon></button>
-                    <ul class="action-dropdown-menu" style="display: none; position: absolute; top: 100%; left: 0; background-color: var(--white); box-shadow: var(--shadow-lg); border-radius: 4px; min-width: 160px; padding: 0.5rem 0; margin-top: 0.25rem; list-style: none; z-index: 1000; white-space: nowrap;">
-                        <li><a href="visits_food.php?customer_id=<?php echo $customer_id; ?>" style="display: block; padding: 0.5rem 1rem; color: var(--text-color); text-decoration: none;">Food Visit</a></li>
-                        <li><a href="visits_money.php?customer_id=<?php echo $customer_id; ?>" style="display: block; padding: 0.5rem 1rem; color: var(--text-color); text-decoration: none;">Money Visit</a></li>
-                        <li><a href="visits_voucher.php?customer_id=<?php echo $customer_id; ?>" style="display: block; padding: 0.5rem 1rem; color: var(--text-color); text-decoration: none;">Voucher Visit</a></li>
+                <div class="action-dropdown">
+                    <button type="button" class="btn btn-primary">Record Visit <ion-icon name="chevron-down"></ion-icon></button>
+                    <ul class="action-dropdown-menu">
+                        <li><a href="visits_food.php?customer_id=<?php echo $customer_id; ?>">Food Visit</a></li>
+                        <li><a href="visits_money.php?customer_id=<?php echo $customer_id; ?>">Money Visit</a></li>
+                        <li><a href="visits_voucher.php?customer_id=<?php echo $customer_id; ?>">Voucher Visit</a></li>
                     </ul>
                 </div>
                 <a href="#visit-history" class="btn btn-secondary">
@@ -228,12 +259,12 @@ include 'header.php';
                 <a href="customer_view.php?id=<?php echo $customer_id; ?>" class="btn btn-secondary">
                     <ion-icon name="eye"></ion-icon> View Mode
                 </a>
-                <div class="action-dropdown" style="display: inline-block; position: relative;">
-                    <button class="btn btn-primary" style="position: relative;">Record Visit <ion-icon name="chevron-down" style="font-size: 0.8rem; vertical-align: middle;"></ion-icon></button>
-                    <ul class="action-dropdown-menu" style="display: none; position: absolute; top: 100%; left: 0; background-color: var(--white); box-shadow: var(--shadow-lg); border-radius: 4px; min-width: 160px; padding: 0.5rem 0; margin-top: 0.25rem; list-style: none; z-index: 1000; white-space: nowrap;">
-                        <li><a href="visits_food.php?customer_id=<?php echo $customer_id; ?>" style="display: block; padding: 0.5rem 1rem; color: var(--text-color); text-decoration: none;">Food Visit</a></li>
-                        <li><a href="visits_money.php?customer_id=<?php echo $customer_id; ?>" style="display: block; padding: 0.5rem 1rem; color: var(--text-color); text-decoration: none;">Money Visit</a></li>
-                        <li><a href="visits_voucher.php?customer_id=<?php echo $customer_id; ?>" style="display: block; padding: 0.5rem 1rem; color: var(--text-color); text-decoration: none;">Voucher Visit</a></li>
+                <div class="action-dropdown">
+                    <button type="button" class="btn btn-primary">Record Visit <ion-icon name="chevron-down"></ion-icon></button>
+                    <ul class="action-dropdown-menu">
+                        <li><a href="visits_food.php?customer_id=<?php echo $customer_id; ?>">Food Visit</a></li>
+                        <li><a href="visits_money.php?customer_id=<?php echo $customer_id; ?>">Money Visit</a></li>
+                        <li><a href="visits_voucher.php?customer_id=<?php echo $customer_id; ?>">Voucher Visit</a></li>
                     </ul>
                 </div>
             <?php endif; ?>
@@ -849,6 +880,7 @@ include 'header.php';
                                         <th>Amount</th>
                                         <th>Status</th>
                                         <th>Notes</th>
+                                        <th>Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -890,6 +922,18 @@ include 'header.php';
                                                 ?>
                                             </td>
                                             <td><?php echo nl2br(htmlspecialchars($visit['notes'] ?? '')); ?></td>
+                                            <td>
+                                                <?php 
+                                                if (isset($voucher_details[$visit['id']]) && $voucher_details[$visit['id']]['status'] === 'active'): 
+                                                ?>
+                                                    <form method="POST" action="" style="display: inline;" onsubmit="return confirm('Are you sure you want to revoke this voucher? This action cannot be undone.');">
+                                                        <input type="hidden" name="voucher_code" value="<?php echo htmlspecialchars($voucher_details[$visit['id']]['voucher_code']); ?>">
+                                                        <button type="submit" name="revoke_voucher" class="btn btn-small" style="background-color: #d32f2f; color: white;">Revoke</button>
+                                                    </form>
+                                                <?php else: ?>
+                                                    -
+                                                <?php endif; ?>
+                                            </td>
                                         </tr>
                                     <?php endforeach; ?>
                                 </tbody>
@@ -925,10 +969,19 @@ include 'header.php';
 .action-dropdown {
     position: relative;
     display: inline-block;
+    vertical-align: middle;
+    margin-left: 0.5rem;
 }
 
 .action-dropdown button {
     cursor: pointer;
+    border: none;
+}
+
+.action-dropdown button ion-icon {
+    font-size: 0.8rem;
+    vertical-align: middle;
+    margin-left: 0.25rem;
 }
 
 .action-dropdown-menu {
@@ -942,6 +995,8 @@ include 'header.php';
     min-width: 160px;
     padding: 0.5rem 0;
     margin-top: 0.25rem;
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
     list-style: none;
     z-index: 1000;
     white-space: nowrap;
@@ -951,10 +1006,11 @@ include 'header.php';
     content: '';
     position: absolute;
     top: -10px;
-    left: 0;
-    right: 0;
+    left: -10px;
+    right: -10px;
     height: 10px;
     background: transparent;
+    pointer-events: auto;
 }
 
 .action-dropdown:hover .action-dropdown-menu,

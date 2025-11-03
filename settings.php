@@ -69,6 +69,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (isset($_POST['voucher_prefix'])) {
                 setSetting('voucher_prefix', $_POST['voucher_prefix']);
             }
+            
+            if (isset($_POST['allowed_ips'])) {
+                setSetting('allowed_ips', $_POST['allowed_ips']);
+            }
+            
+            if (isset($_POST['allowed_dns'])) {
+                setSetting('allowed_dns', $_POST['allowed_dns']);
+            }
         }
         
         // Save advanced mode settings
@@ -109,12 +117,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 setSetting('money_distribution_limit', intval($_POST['money_distribution_limit']));
             }
             
+            if (isset($_POST['money_distribution_limit_month'])) {
+                setSetting('money_distribution_limit_month', intval($_POST['money_distribution_limit_month']));
+            }
+            
+            if (isset($_POST['money_distribution_limit_year'])) {
+                setSetting('money_distribution_limit_year', intval($_POST['money_distribution_limit_year']));
+            }
+            
+            if (isset($_POST['money_min_days_between'])) {
+                setSetting('money_min_days_between', intval($_POST['money_min_days_between']));
+            }
+            
+            if (isset($_POST['voucher_limit_month'])) {
+                setSetting('voucher_limit_month', intval($_POST['voucher_limit_month']));
+            }
+            
+            if (isset($_POST['voucher_limit_year'])) {
+                setSetting('voucher_limit_year', intval($_POST['voucher_limit_year']));
+            }
+            
+            if (isset($_POST['voucher_min_days_between'])) {
+                setSetting('voucher_min_days_between', intval($_POST['voucher_min_days_between']));
+            }
+            
             if (isset($_POST['theme_color'])) {
                 setSetting('theme_color', $_POST['theme_color']);
             }
             
             if (isset($_POST['voucher_prefix'])) {
                 setSetting('voucher_prefix', $_POST['voucher_prefix']);
+            }
+            
+            if (isset($_POST['allowed_ips'])) {
+                setSetting('allowed_ips', $_POST['allowed_ips']);
+            }
+            
+            if (isset($_POST['allowed_dns'])) {
+                setSetting('allowed_dns', $_POST['allowed_dns']);
             }
         }
         
@@ -188,6 +228,9 @@ include 'header.php';
                     <div class="settings-category" data-category="appearance">
                         <h3><ion-icon name="color-palette"></ion-icon> Appearance</h3>
                     </div>
+                    <div class="settings-category" data-category="security">
+                        <h3><ion-icon name="shield-checkmark"></ion-icon> Security</h3>
+                    </div>
                 </div>
                 
                 <div class="settings-content">
@@ -253,30 +296,70 @@ include 'header.php';
                             
                             <div class="form-group">
                                 <label for="visits_per_month_limit">Food Visits Per Month Limit</label>
-                                <input type="number" id="visits_per_month_limit" name="visits_per_month_limit" value="<?php echo $visits_per_month; ?>" min="1" required>
-                                <small class="help-text">Maximum number of food visits allowed per customer per month</small>
+                                <input type="number" id="visits_per_month_limit" name="visits_per_month_limit" value="<?php echo $visits_per_month; ?>" min="-1" required>
+                                <small class="help-text">Maximum number of food visits allowed per customer per month (use -1 for unlimited, 0 to disable)</small>
                             </div>
                             
                             <div class="form-group">
                                 <label for="visits_per_year_limit">Food Visits Per Year Limit</label>
-                                <input type="number" id="visits_per_year_limit" name="visits_per_year_limit" value="<?php echo $visits_per_year; ?>" min="1" required>
-                                <small class="help-text">Maximum number of food visits allowed per customer per year</small>
+                                <input type="number" id="visits_per_year_limit" name="visits_per_year_limit" value="<?php echo $visits_per_year; ?>" min="-1" required>
+                                <small class="help-text">Maximum number of food visits allowed per customer per year (use -1 for unlimited, 0 to disable)</small>
                             </div>
                             
                             <div class="form-group">
                                 <label for="min_days_between_visits">Minimum Days Between Food Visits</label>
-                                <input type="number" id="min_days_between_visits" name="min_days_between_visits" value="<?php echo $min_days_between; ?>" min="1" required>
-                                <small class="help-text">Minimum number of days that must pass between food visits</small>
+                                <input type="number" id="min_days_between_visits" name="min_days_between_visits" value="<?php echo $min_days_between; ?>" min="-1" required>
+                                <small class="help-text">Minimum number of days that must pass between food visits (use -1 for unlimited, 0 to disable)</small>
                             </div>
                         </div>
                         
                         <div class="form-section">
-                            <h3>Money Distribution Limit</h3>
+                            <h3>Money Distribution Limits</h3>
                             
                             <div class="form-group">
-                                <label for="money_distribution_limit">Money Distribution Limit Per Household</label>
-                                <input type="number" id="money_distribution_limit" name="money_distribution_limit" value="<?php echo $money_limit; ?>" min="1" required>
-                                <small class="help-text">Maximum number of money distributions allowed per household (all time). Note: Vouchers have no limit.</small>
+                                <label for="money_distribution_limit">Money Distribution Limit Per Household (Total)</label>
+                                <input type="number" id="money_distribution_limit" name="money_distribution_limit" value="<?php echo $money_limit; ?>" min="-1" required>
+                                <small class="help-text">Maximum number of money distributions allowed per household (all time). Use -1 for unlimited, 0 to disable.</small>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="money_distribution_limit_month">Money Distribution Limit Per Month</label>
+                                <input type="number" id="money_distribution_limit_month" name="money_distribution_limit_month" value="<?php echo intval(getSetting('money_distribution_limit_month', -1)); ?>" min="-1" required>
+                                <small class="help-text">Maximum number of money distributions allowed per household per month. Use -1 for unlimited, 0 to disable.</small>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="money_distribution_limit_year">Money Distribution Limit Per Year</label>
+                                <input type="number" id="money_distribution_limit_year" name="money_distribution_limit_year" value="<?php echo intval(getSetting('money_distribution_limit_year', -1)); ?>" min="-1" required>
+                                <small class="help-text">Maximum number of money distributions allowed per household per year. Use -1 for unlimited, 0 to disable.</small>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="money_min_days_between">Minimum Days Between Money Visits</label>
+                                <input type="number" id="money_min_days_between" name="money_min_days_between" value="<?php echo intval(getSetting('money_min_days_between', -1)); ?>" min="-1" required>
+                                <small class="help-text">Minimum number of days that must pass between money visits. Use -1 for unlimited, 0 to disable.</small>
+                            </div>
+                        </div>
+                        
+                        <div class="form-section">
+                            <h3>Voucher Limits</h3>
+                            
+                            <div class="form-group">
+                                <label for="voucher_limit_month">Voucher Limit Per Month</label>
+                                <input type="number" id="voucher_limit_month" name="voucher_limit_month" value="<?php echo intval(getSetting('voucher_limit_month', -1)); ?>" min="-1" required>
+                                <small class="help-text">Maximum number of vouchers allowed per customer per month. Use -1 for unlimited, 0 to disable.</small>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="voucher_limit_year">Voucher Limit Per Year</label>
+                                <input type="number" id="voucher_limit_year" name="voucher_limit_year" value="<?php echo intval(getSetting('voucher_limit_year', -1)); ?>" min="-1" required>
+                                <small class="help-text">Maximum number of vouchers allowed per customer per year. Use -1 for unlimited, 0 to disable.</small>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="voucher_min_days_between">Minimum Days Between Voucher Visits</label>
+                                <input type="number" id="voucher_min_days_between" name="voucher_min_days_between" value="<?php echo intval(getSetting('voucher_min_days_between', -1)); ?>" min="-1" required>
+                                <small class="help-text">Minimum number of days that must pass between voucher visits. Use -1 for unlimited, 0 to disable.</small>
                             </div>
                         </div>
                     </div>
@@ -302,6 +385,35 @@ include 'header.php';
                                     }
                                 });
                             </script>
+                        </div>
+                    </div>
+                    
+                    <!-- Security Settings -->
+                    <div class="category-content" id="category-security">
+                        <h2>Access Control</h2>
+                        
+                        <div class="alert alert-warning" style="margin-bottom: 1.5rem;">
+                            <ion-icon name="warning"></ion-icon>
+                            <strong>Warning:</strong> Access control restrictions will prevent unauthorized users from accessing the system. 
+                            Leave empty to allow access from any IP/DNS. Changes take effect immediately.
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="allowed_ips">Allowed IP Addresses</label>
+                            <textarea id="allowed_ips" name="allowed_ips" rows="4" placeholder="192.168.1.100, 10.0.0.0/24, 172.16.0.1"><?php echo htmlspecialchars(getSetting('allowed_ips', '')); ?></textarea>
+                            <small class="help-text">Comma-separated list of allowed IP addresses. Supports CIDR notation (e.g., 192.168.1.0/24). Leave empty to allow all IPs.</small>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="allowed_dns">Allowed DNS Names</label>
+                            <textarea id="allowed_dns" name="allowed_dns" rows="4" placeholder="example.com, subdomain.example.org"><?php echo htmlspecialchars(getSetting('allowed_dns', '')); ?></textarea>
+                            <small class="help-text">Comma-separated list of allowed DNS names or domains. Leave empty to allow all DNS names.</small>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Current IP Address</label>
+                            <input type="text" value="<?php echo htmlspecialchars($_SERVER['REMOTE_ADDR'] ?? 'Unknown'); ?>" readonly class="readonly-field">
+                            <small class="help-text">Your current IP address. Add this to the allowed IPs list if you want to ensure continued access.</small>
                         </div>
                     </div>
                 </div>
@@ -336,17 +448,20 @@ include 'header.php';
                     
                     <div class="form-group">
                         <label for="visits_per_month_limit">Visits Per Month Limit</label>
-                        <input type="number" id="visits_per_month_limit" name="visits_per_month_limit" value="<?php echo $visits_per_month; ?>" min="1" required>
+                        <input type="number" id="visits_per_month_limit" name="visits_per_month_limit" value="<?php echo $visits_per_month; ?>" min="-1" required>
+                        <small class="help-text">Use -1 for unlimited, 0 to disable</small>
                     </div>
                     
                     <div class="form-group">
                         <label for="visits_per_year_limit">Visits Per Year Limit</label>
-                        <input type="number" id="visits_per_year_limit" name="visits_per_year_limit" value="<?php echo $visits_per_year; ?>" min="1" required>
+                        <input type="number" id="visits_per_year_limit" name="visits_per_year_limit" value="<?php echo $visits_per_year; ?>" min="-1" required>
+                        <small class="help-text">Use -1 for unlimited, 0 to disable</small>
                     </div>
                     
                     <div class="form-group">
                         <label for="min_days_between_visits">Minimum Days Between Visits</label>
-                        <input type="number" id="min_days_between_visits" name="min_days_between_visits" value="<?php echo $min_days_between; ?>" min="1" required>
+                        <input type="number" id="min_days_between_visits" name="min_days_between_visits" value="<?php echo $min_days_between; ?>" min="-1" required>
+                        <small class="help-text">Use -1 for unlimited, 0 to disable</small>
                     </div>
                 </div>
                 

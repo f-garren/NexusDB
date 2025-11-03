@@ -77,6 +77,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['redeem_voucher']) && 
 }
 
 $shop_name = getSetting('shop_name', 'Partner Store');
+$voucher_prefix = getSetting('voucher_prefix', 'VCH-');
 
 // Get all active vouchers for the collapsible list
 $db = getDB();
@@ -110,7 +111,7 @@ include 'header.php';
         <form method="POST" action="">
             <div class="form-group">
                 <label for="voucher_code">Voucher Code <span class="required">*</span></label>
-                <input type="text" id="voucher_code" name="voucher_code" value="<?php echo htmlspecialchars($voucher_code); ?>" placeholder="Enter voucher code (e.g., VCH-XXXXXXXX)" required autofocus style="margin-bottom: 1rem;">
+                <input type="text" id="voucher_code" name="voucher_code" value="<?php echo htmlspecialchars($voucher_code); ?>" placeholder="Enter voucher code (e.g., <?php echo htmlspecialchars($voucher_prefix); ?>XXXXXXXX)" required autofocus style="margin-bottom: 1rem;">
                 <button type="submit" class="btn btn-primary">Check Voucher</button>
             </div>
         </form>

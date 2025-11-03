@@ -55,8 +55,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_submit'])) {
         $stmt->execute([$customer_id, $visit_month]);
         $month_visits = $stmt->fetch()['count'];
         
-        if ($month_visits >= $visits_per_month) {
-            throw new Exception("Monthly food visit limit reached. This customer has {$month_visits} food visits this month (limit: {$visits_per_month}).");
+        // Check monthly limit (-1 = unlimited, 0 = disabled, >0 = limit)
+        if ($visits_per_month >= 0 && $month_visits >= $visits_per_month) {
+            $limit_text = $visits_per_month == 0 ? 'disabled' : $visits_per_month;
+            throw new Exception("Monthly food visit limit reached. This customer has {$month_visits} food visits this month (limit: {$limit_text}).");
         }
         
         // Count food visits in the same year
@@ -64,19 +66,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_submit'])) {
         $stmt->execute([$customer_id, $visit_year]);
         $year_visits = $stmt->fetch()['count'];
         
-        if ($year_visits >= $visits_per_year) {
-            throw new Exception("Yearly food visit limit reached. This customer has {$year_visits} food visits this year (limit: {$visits_per_year}).");
+        // Check yearly limit (-1 = unlimited, 0 = disabled, >0 = limit)
+        if ($visits_per_year >= 0 && $year_visits >= $visits_per_year) {
+            $limit_text = $visits_per_year == 0 ? 'disabled' : $visits_per_year;
+            throw new Exception("Yearly food visit limit reached. This customer has {$year_visits} food visits this year (limit: {$limit_text}).");
         }
         
         // Check minimum days between food visits
-        $stmt = $db->prepare("SELECT MAX(visit_date) as last_visit FROM visits WHERE customer_id = ? AND visit_type = 'food' AND visit_date < ?");
-        $stmt->execute([$customer_id, $visit_date]);
-        $last_visit = $stmt->fetch()['last_visit'];
-        
-        if ($last_visit) {
-            $days_since = floor(($visit_timestamp - strtotime($last_visit)) / 86400);
-            if ($days_since < $min_days_between) {
-                throw new Exception("Minimum {$min_days_between} days required between food visits. Last food visit was {$days_since} days ago.");
+        // -1 = unlimited (no check), 0 = disabled (no check), >0 = minimum days
+        if ($min_days_between > 0) {
+            $stmt = $db->prepare("SELECT MAX(visit_date) as last_visit FROM visits WHERE customer_id = ? AND visit_type = 'food' AND visit_date < ?");
+            $stmt->execute([$customer_id, $visit_date]);
+            $last_visit = $stmt->fetch()['last_visit'];
+            
+            if ($last_visit) {
+                $days_since = floor(($visit_timestamp - strtotime($last_visit)) / 86400);
+                if ($days_since < $min_days_between) {
+                    throw new Exception("Minimum {$min_days_between} days required between food visits. Last food visit was {$days_since} days ago.");
+                }
             }
         }
         

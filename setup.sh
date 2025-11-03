@@ -47,6 +47,71 @@ fi
 
 print_info "Using repository directory: $INSTALL_DIR"
 
+# Ask about HTTPS setup
+echo ""
+echo -e "${YELLOW}========================================${NC}"
+echo -e "${YELLOW}HTTPS Configuration${NC}"
+echo -e "${YELLOW}========================================${NC}"
+echo ""
+read -p "Do you want to set up HTTPS/SSL for NexusDB? (y/n): " SETUP_HTTPS
+SETUP_HTTPS=$(echo "$SETUP_HTTPS" | tr '[:upper:]' '[:lower:]')
+
+DOMAIN=""
+SUBDOMAIN=""
+FULL_DOMAIN=""
+
+if [ "$SETUP_HTTPS" = "y" ] || [ "$SETUP_HTTPS" = "yes" ]; then
+    echo ""
+    read -p "Enter your domain name (e.g., example.com): " DOMAIN
+    
+    if [ -z "$DOMAIN" ]; then
+        print_error "Domain name cannot be empty. Exiting."
+        exit 1
+    fi
+    
+    echo ""
+    read -p "Enter subdomain (leave empty for www or no subdomain): " SUBDOMAIN
+    
+    if [ -z "$SUBDOMAIN" ]; then
+        FULL_DOMAIN="$DOMAIN"
+        print_info "Using domain: $FULL_DOMAIN"
+    else
+        FULL_DOMAIN="${SUBDOMAIN}.${DOMAIN}"
+        print_info "Using full domain: $FULL_DOMAIN"
+    fi
+    
+    # Verify domain resolution (if dig is available)
+    if command -v dig &> /dev/null; then
+        print_info "Verifying domain resolves to this server..."
+        SERVER_IP=$(hostname -I | awk '{print $1}')
+        DOMAIN_IP=$(dig +short "$FULL_DOMAIN" | tail -n1)
+        
+        if [ -n "$DOMAIN_IP" ] && [ "$DOMAIN_IP" != "$SERVER_IP" ]; then
+            print_warning "Domain $FULL_DOMAIN resolves to $DOMAIN_IP, but this server's IP is $SERVER_IP"
+            print_warning "Certbot may fail if DNS is not properly configured."
+            read -p "Continue anyway? (y/n): " CONTINUE
+            CONTINUE=$(echo "$CONTINUE" | tr '[:upper:]' '[:lower:]')
+            if [ "$CONTINUE" != "y" ] && [ "$CONTINUE" != "yes" ]; then
+                print_error "Setup cancelled."
+                exit 1
+            fi
+        elif [ -z "$DOMAIN_IP" ]; then
+            print_warning "Could not resolve domain $FULL_DOMAIN. DNS may not be configured yet."
+            read -p "Continue anyway? (y/n): " CONTINUE
+            CONTINUE=$(echo "$CONTINUE" | tr '[:upper:]' '[:lower:]')
+            if [ "$CONTINUE" != "y" ] && [ "$CONTINUE" != "yes" ]; then
+                print_error "Setup cancelled."
+                exit 1
+            fi
+        else
+            print_info "Domain DNS verified: $FULL_DOMAIN -> $DOMAIN_IP"
+        fi
+    else
+        print_warning "dig command not available. Skipping DNS verification."
+        print_warning "Make sure $FULL_DOMAIN points to this server before certbot runs."
+    fi
+fi
+
 # Step 1: Update system
 print_info "Updating system packages..."
 apt-get update -qq
@@ -56,9 +121,19 @@ apt-get upgrade -y -qq
 print_info "Installing required packages (Apache, PHP, MySQL)..."
 apt-get install -y apache2 mysql-server php php-mysql php-pdo php-xml php-mbstring php-curl libapache2-mod-php unzip expect
 
+# Install certbot if HTTPS is requested
+if [ "$SETUP_HTTPS" = "y" ] || [ "$SETUP_HTTPS" = "yes" ]; then
+    print_info "Installing certbot for SSL certificates..."
+    apt-get install -y certbot python3-certbot-apache
+fi
+
 # Step 3: Enable Apache modules
 print_info "Enabling Apache modules..."
 a2enmod rewrite
+if [ "$SETUP_HTTPS" = "y" ] || [ "$SETUP_HTTPS" = "yes" ]; then
+    a2enmod ssl
+    a2enmod headers
+fi
 
 # Detect and enable the correct PHP module version
 PHP_VERSION=$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;' 2>/dev/null || echo "")
@@ -194,6 +269,109 @@ find "$APP_DIR" -type d -exec chmod 755 {} \;
 find "$APP_DIR" -type f -exec chmod 644 {} \;
 chmod 600 "$CONFIG_FILE"
 
+# Step 10.5: Configure Apache Virtual Host and HTTPS
+if [ "$SETUP_HTTPS" = "y" ] || [ "$SETUP_HTTPS" = "yes" ]; then
+    print_info "Configuring Apache Virtual Host for HTTPS..."
+    
+    # Create virtual host configuration file
+    VHOST_FILE="/etc/apache2/sites-available/nexusdb.conf"
+    
+    cat > "$VHOST_FILE" <<EOF
+<VirtualHost *:80>
+    ServerName $FULL_DOMAIN
+    DocumentRoot $APP_DIR
+    
+    <Directory $APP_DIR>
+        Options -Indexes +FollowSymLinks
+        AllowOverride All
+        Require all granted
+    </Directory>
+    
+    ErrorLog \${APACHE_LOG_DIR}/nexusdb_error.log
+    CustomLog \${APACHE_LOG_DIR}/nexusdb_access.log combined
+</VirtualHost>
+EOF
+    
+    # Enable the site
+    a2ensite nexusdb.conf
+    a2dissite 000-default.conf 2>/dev/null || true
+    
+    # Restart Apache to apply configuration
+    systemctl restart apache2
+    
+    # Request email for certbot
+    echo ""
+    read -p "Enter email address for Let's Encrypt notifications (required for certificate): " CERTBOT_EMAIL
+    
+    if [ -z "$CERTBOT_EMAIL" ]; then
+        print_error "Email address is required for Let's Encrypt certificates."
+        print_warning "Continuing with HTTP setup. You can set up HTTPS later with: certbot --apache -d $FULL_DOMAIN"
+        SETUP_HTTPS="failed"
+    else
+        # Verify email format (basic check)
+        if [[ ! "$CERTBOT_EMAIL" =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
+            print_warning "Email format may be invalid. Continuing anyway..."
+        fi
+        
+        # Request SSL certificate with certbot
+        print_info "Requesting SSL certificate from Let's Encrypt..."
+        print_warning "Make sure port 80 and 443 are open in your firewall."
+        print_warning "Domain $FULL_DOMAIN must resolve to this server's IP address."
+        echo ""
+        sleep 2
+        
+        # Run certbot with email
+        certbot --apache -d "$FULL_DOMAIN" --email "$CERTBOT_EMAIL" --agree-tos --non-interactive --redirect || {
+            print_error "Certbot failed. This may be due to:"
+            print_error "1. Domain DNS not pointing to this server"
+            print_error "2. Firewall blocking ports 80/443"
+            print_error "3. Apache configuration issues"
+            print_error "4. Rate limiting from Let's Encrypt"
+            echo ""
+            print_warning "You can manually run: certbot --apache -d $FULL_DOMAIN"
+            print_warning "Continuing with HTTP setup..."
+            SETUP_HTTPS="failed"
+        }
+    fi
+    
+    if [ "$SETUP_HTTPS" != "failed" ]; then
+        print_info "SSL certificate installed successfully!"
+        
+        # Test certificate renewal
+        print_info "Testing certificate renewal..."
+        certbot renew --dry-run > /dev/null 2>&1 && {
+            print_info "Certificate auto-renewal configured successfully"
+        } || {
+            print_warning "Certificate auto-renewal test failed (this may be normal)"
+        }
+    fi
+else
+    # Configure basic Apache Virtual Host for HTTP
+    print_info "Configuring Apache Virtual Host for HTTP..."
+    
+    VHOST_FILE="/etc/apache2/sites-available/nexusdb.conf"
+    
+    cat > "$VHOST_FILE" <<EOF
+<VirtualHost *:80>
+    ServerName localhost
+    DocumentRoot $APP_DIR
+    
+    <Directory $APP_DIR>
+        Options -Indexes +FollowSymLinks
+        AllowOverride All
+        Require all granted
+    </Directory>
+    
+    ErrorLog \${APACHE_LOG_DIR}/nexusdb_error.log
+    CustomLog \${APACHE_LOG_DIR}/nexusdb_access.log combined
+</VirtualHost>
+EOF
+    
+    # Enable the site
+    a2ensite nexusdb.conf
+    a2dissite 000-default.conf 2>/dev/null || true
+fi
+
 # Step 11: Restart services
 print_info "Restarting services..."
 systemctl restart apache2
@@ -212,10 +390,27 @@ echo ""
 echo "IMPORTANT: Passwords saved to: $PASSWORD_FILE"
 echo ""
 echo "Access your application at:"
-echo "  http://localhost/nexusdb/"
-echo "  or"
-echo "  http://$(hostname -I | awk '{print $1}')/nexusdb/"
+if [ "$SETUP_HTTPS" = "y" ] || [ "$SETUP_HTTPS" = "yes" ]; then
+    if [ "$SETUP_HTTPS" != "failed" ]; then
+        echo "  https://$FULL_DOMAIN"
+        echo "  (HTTP requests will be automatically redirected to HTTPS)"
+    else
+        echo "  http://$FULL_DOMAIN (HTTPS setup failed, using HTTP)"
+    fi
+else
+    echo "  http://localhost/nexusdb/"
+    echo "  or"
+    echo "  http://$(hostname -I | awk '{print $1}')/nexusdb/"
+fi
 echo ""
-print_warning "Make sure to secure your server and consider setting up HTTPS!"
+if [ "$SETUP_HTTPS" != "y" ] && [ "$SETUP_HTTPS" != "yes" ]; then
+    print_warning "Make sure to secure your server and consider setting up HTTPS!"
+fi
+if [ "$SETUP_HTTPS" = "y" ] || [ "$SETUP_HTTPS" = "yes" ]; then
+    if [ "$SETUP_HTTPS" != "failed" ]; then
+        print_info "HTTPS is configured and enabled!"
+        print_info "Certificate will auto-renew via certbot."
+    fi
+fi
 echo "=========================================="
 

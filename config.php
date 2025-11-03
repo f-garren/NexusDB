@@ -99,5 +99,124 @@ try {
     $timezone = 'America/Boise';
 }
 date_default_timezone_set($timezone);
+
+// IP/DNS Access Control
+function checkAccessControl() {
+    try {
+        $allowed_ips = getSetting('allowed_ips', '');
+        $allowed_dns = getSetting('allowed_dns', '');
+        
+        // If no restrictions set, allow all access
+        if (empty($allowed_ips) && empty($allowed_dns)) {
+            return true;
+        }
+        
+        // Get client IP address
+        $client_ip = $_SERVER['REMOTE_ADDR'] ?? '';
+        
+        // Handle forwarded IPs (X-Forwarded-For header)
+        if (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
+            $forwarded_ips = explode(',', $_SERVER['HTTP_X_FORWARDED_FOR']);
+            $client_ip = trim($forwarded_ips[0]);
+        }
+        
+        // Check IP whitelist
+        if (!empty($allowed_ips)) {
+            $allowed_ip_list = array_map('trim', explode(',', $allowed_ips));
+            if (in_array($client_ip, $allowed_ip_list)) {
+                return true;
+            }
+            
+            // Check CIDR notation (e.g., 192.168.1.0/24)
+            foreach ($allowed_ip_list as $allowed_ip) {
+                if (strpos($allowed_ip, '/') !== false) {
+                    list($network, $prefix) = explode('/', $allowed_ip);
+                    if (ipInRange($client_ip, $network, $prefix)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        
+        // Check DNS whitelist
+        if (!empty($allowed_dns)) {
+            $allowed_dns_list = array_map('trim', explode(',', $allowed_dns));
+            
+            // Get hostname from IP
+            $hostname = @gethostbyaddr($client_ip);
+            
+            // Check if hostname matches any allowed DNS
+            foreach ($allowed_dns_list as $allowed_dns_name) {
+                $allowed_dns_name = strtolower(trim($allowed_dns_name));
+                $hostname_lower = strtolower($hostname);
+                
+                // Exact match or domain match
+                if ($hostname_lower === $allowed_dns_name || 
+                    substr($hostname_lower, -(strlen($allowed_dns_name) + 1)) === '.' . $allowed_dns_name ||
+                    substr($hostname_lower, -strlen($allowed_dns_name)) === $allowed_dns_name) {
+                    return true;
+                }
+            }
+        }
+        
+        // Access denied
+        http_response_code(403);
+        die('
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Access Denied</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            height: 100vh; 
+            margin: 0; 
+            background: #f5f5f5; 
+        }
+        .error-container { 
+            background: white; 
+            padding: 2rem; 
+            border-radius: 8px; 
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1); 
+            text-align: center; 
+        }
+        h1 { color: #d32f2f; margin: 0 0 1rem 0; }
+        p { color: #666; margin: 0.5rem 0; }
+    </style>
+</head>
+<body>
+    <div class="error-container">
+        <h1>Access Denied</h1>
+        <p>Your IP address (' . htmlspecialchars($client_ip) . ') is not authorized to access this system.</p>
+        <p>Please contact the administrator if you believe this is an error.</p>
+    </div>
+</body>
+</html>');
+        
+    } catch (Exception $e) {
+        // On error, allow access (fail open) to prevent lockout
+        // In production, you might want to log this error
+        return true;
+    }
+}
+
+// Helper function to check if IP is in CIDR range
+function ipInRange($ip, $network, $prefix) {
+    $ip_long = ip2long($ip);
+    $network_long = ip2long($network);
+    $mask = -1 << (32 - (int)$prefix);
+    return ($ip_long & $mask) === ($network_long & $mask);
+}
+
+// Check access control (after database connection is available)
+try {
+    checkAccessControl();
+} catch (Exception $e) {
+    // If database isn't ready yet, skip access control check
+    // This allows the system to work during initial setup
+}
 ?>
 

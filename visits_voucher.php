@@ -32,13 +32,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_submit'])) {
             throw new Exception("Customer not found");
         }
         
-        // Use current timestamp or manual override for visit
-        if (!empty($p['override_visit_date']) && !empty($p['manual_visit_datetime'])) {
-            $visit_date = date('Y-m-d H:i:s', strtotime($p['manual_visit_datetime']));
-            $visit_timestamp = strtotime($p['manual_visit_datetime']);
-        } else {
-            $visit_timestamp = time();
-            $visit_date = date('Y-m-d H:i:s');
+        // Use current timestamp for visit (no override allowed)
+        $visit_timestamp = time();
+        $visit_date = date('Y-m-d H:i:s');
+        
+        // Check voucher limits
+        $voucher_limit_month = intval(getSetting('voucher_limit_month', -1));
+        $voucher_limit_year = intval(getSetting('voucher_limit_year', -1));
+        $voucher_min_days_between = intval(getSetting('voucher_min_days_between', -1));
+        
+        $visit_month = date('Y-m', $visit_timestamp);
+        $visit_year = date('Y', $visit_timestamp);
+        
+        // Count voucher visits this month
+        $stmt = $db->prepare("SELECT COUNT(*) as count FROM visits WHERE customer_id = ? AND visit_type = 'voucher' AND DATE_FORMAT(visit_date, '%Y-%m') = ?");
+        $stmt->execute([$customer_id, $visit_month]);
+        $voucher_visits_month = $stmt->fetch()['count'];
+        
+        // Check monthly limit (-1 = unlimited, 0 = disabled, >0 = limit)
+        if ($voucher_limit_month >= 0 && $voucher_visits_month >= $voucher_limit_month) {
+            $limit_text = $voucher_limit_month == 0 ? 'disabled' : $voucher_limit_month;
+            throw new Exception("Monthly voucher limit reached. This customer has {$voucher_visits_month} voucher visits this month (limit: {$limit_text}).");
+        }
+        
+        // Count voucher visits this year
+        $stmt = $db->prepare("SELECT COUNT(*) as count FROM visits WHERE customer_id = ? AND visit_type = 'voucher' AND YEAR(visit_date) = ?");
+        $stmt->execute([$customer_id, $visit_year]);
+        $voucher_visits_year = $stmt->fetch()['count'];
+        
+        // Check yearly limit (-1 = unlimited, 0 = disabled, >0 = limit)
+        if ($voucher_limit_year >= 0 && $voucher_visits_year >= $voucher_limit_year) {
+            $limit_text = $voucher_limit_year == 0 ? 'disabled' : $voucher_limit_year;
+            throw new Exception("Yearly voucher limit reached. This customer has {$voucher_visits_year} voucher visits this year (limit: {$limit_text}).");
+        }
+        
+        // Check minimum days between voucher visits (-1 = unlimited, 0 = disabled, >0 = minimum days)
+        if ($voucher_min_days_between > 0) {
+            $stmt = $db->prepare("SELECT MAX(visit_date) as last_visit FROM visits WHERE customer_id = ? AND visit_type = 'voucher' AND visit_date < ?");
+            $stmt->execute([$customer_id, $visit_date]);
+            $last_visit = $stmt->fetch()['last_visit'];
+            
+            if ($last_visit) {
+                $days_since = floor(($visit_timestamp - strtotime($last_visit)) / 86400);
+                if ($days_since < $voucher_min_days_between) {
+                    throw new Exception("Minimum {$voucher_min_days_between} days required between voucher visits. Last voucher visit was {$days_since} days ago.");
+                }
+            }
         }
         
         // Voucher creation - create voucher record
@@ -128,13 +167,7 @@ include 'header.php';
                     <tr><th>Customer:</th><td><?php echo htmlspecialchars($customer['name']); ?></td></tr>
                     <tr><th>Phone:</th><td><?php echo htmlspecialchars($customer['phone']); ?></td></tr>
                     <tr><th>Visit Type:</th><td><strong>Voucher</strong></td></tr>
-                    <tr><th>Visit Date & Time:</th><td><?php 
-                        if (!empty($form_data['override_visit_date']) && !empty($form_data['manual_visit_datetime'])) {
-                            echo date('F d, Y \a\t g:i A', strtotime($form_data['manual_visit_datetime']));
-                        } else {
-                            echo date('F d, Y \a\t g:i A');
-                        }
-                    ?></td></tr>
+                    <tr><th>Visit Date & Time:</th><td><?php echo date('F d, Y \a\t g:i A'); ?></td></tr>
                     <?php if (!empty($form_data['voucher_amount'])): ?>
                     <tr><th>Voucher Amount:</th><td>$<?php echo number_format(floatval($form_data['voucher_amount']), 2); ?></td></tr>
                     <?php endif; ?>
@@ -180,24 +213,7 @@ include 'header.php';
                 <small class="help-text">Enter the voucher dollar amount</small>
             </div>
 
-            <div class="form-group">
-                <label for="visit_date">Visit Date & Time</label>
-                <div class="checkbox-group">
-                    <label style="display: flex; align-items: center; gap: 0.5rem; font-weight: normal;">
-                        <input type="checkbox" id="override_visit_date" name="override_visit_date" value="1">
-                        <span>Override automatic date/time</span>
-                    </label>
-                </div>
-                <div id="auto_visit_datetime">
-                    <input type="text" value="<?php echo date('F d, Y \a\t g:i A'); ?>" readonly class="readonly-field">
-                    <small class="help-text">Automatically recorded from system time</small>
-                </div>
-                <div id="manual_visit_datetime" style="display: none;">
-                    <input type="datetime-local" id="manual_visit_datetime_input" name="manual_visit_datetime" value="<?php echo date('Y-m-d\TH:i'); ?>" class="datetime-input" tabindex="-1">
-                    <small class="help-text">Enter the actual visit date and time</small>
-                </div>
-                <input type="hidden" name="visit_date" value="<?php echo date('Y-m-d H:i:s'); ?>">
-            </div>
+            <input type="hidden" name="visit_date" value="<?php echo date('Y-m-d H:i:s'); ?>">
 
             <div class="form-group">
                 <label for="notes">Notes</label>
@@ -266,22 +282,6 @@ if (customerSearch) {
     document.addEventListener('click', function(e) {
         if (!customerSearch.contains(e.target) && !customerResults.contains(e.target)) {
             customerResults.innerHTML = '';
-        }
-    });
-}
-
-// Handle visit date/time override
-const overrideCheckbox = document.getElementById('override_visit_date');
-if (overrideCheckbox) {
-    overrideCheckbox.addEventListener('change', function() {
-        if (this.checked) {
-            document.getElementById('auto_visit_datetime').style.display = 'none';
-            document.getElementById('manual_visit_datetime').style.display = 'block';
-            document.getElementById('manual_visit_datetime_input').required = true;
-        } else {
-            document.getElementById('auto_visit_datetime').style.display = 'block';
-            document.getElementById('manual_visit_datetime').style.display = 'none';
-            document.getElementById('manual_visit_datetime_input').required = false;
         }
     });
 }

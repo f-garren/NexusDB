@@ -61,14 +61,59 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_submit'])) {
             $household_customer_ids = array_unique(array_merge($household_customer_ids, $related_customers));
         }
         
-        // Count money visits for all household members
+        $visit_month = date('Y-m', $visit_timestamp);
+        $visit_year = date('Y', $visit_timestamp);
+        $money_limit_month = intval(getSetting('money_distribution_limit_month', -1));
+        $money_limit_year = intval(getSetting('money_distribution_limit_year', -1));
+        
+        // Count money visits for all household members (total)
         $placeholders = str_repeat('?,', count($household_customer_ids) - 1) . '?';
         $stmt = $db->prepare("SELECT COUNT(*) as count FROM visits WHERE customer_id IN ($placeholders) AND visit_type = 'money'");
         $stmt->execute($household_customer_ids);
         $money_visits_count = $stmt->fetch()['count'];
         
-        if ($money_visits_count >= $money_limit) {
-            throw new Exception("Money assistance limit reached. This household has received money assistance {$money_visits_count} times (limit: {$money_limit} times total).");
+        // Check total household limit (-1 = unlimited, 0 = disabled, >0 = limit)
+        if ($money_limit >= 0 && $money_visits_count >= $money_limit) {
+            $limit_text = $money_limit == 0 ? 'disabled' : $money_limit;
+            throw new Exception("Money assistance limit reached. This household has received money assistance {$money_visits_count} times (limit: {$limit_text} times total).");
+        }
+        
+        // Count money visits this month
+        $stmt = $db->prepare("SELECT COUNT(*) as count FROM visits WHERE customer_id IN ($placeholders) AND visit_type = 'money' AND DATE_FORMAT(visit_date, '%Y-%m') = ?");
+        $stmt->execute(array_merge($household_customer_ids, [$visit_month]));
+        $money_visits_month = $stmt->fetch()['count'];
+        
+        // Check monthly limit (-1 = unlimited, 0 = disabled, >0 = limit)
+        if ($money_limit_month >= 0 && $money_visits_month >= $money_limit_month) {
+            $limit_text = $money_limit_month == 0 ? 'disabled' : $money_limit_month;
+            throw new Exception("Monthly money assistance limit reached. This household has received money assistance {$money_visits_month} times this month (limit: {$limit_text}).");
+        }
+        
+        // Count money visits this year
+        $stmt = $db->prepare("SELECT COUNT(*) as count FROM visits WHERE customer_id IN ($placeholders) AND visit_type = 'money' AND YEAR(visit_date) = ?");
+        $stmt->execute(array_merge($household_customer_ids, [$visit_year]));
+        $money_visits_year = $stmt->fetch()['count'];
+        
+        // Check yearly limit (-1 = unlimited, 0 = disabled, >0 = limit)
+        if ($money_limit_year >= 0 && $money_visits_year >= $money_limit_year) {
+            $limit_text = $money_limit_year == 0 ? 'disabled' : $money_limit_year;
+            throw new Exception("Yearly money assistance limit reached. This household has received money assistance {$money_visits_year} times this year (limit: {$limit_text}).");
+        }
+        
+        // Check minimum days between money visits (-1 = unlimited, 0 = disabled, >0 = minimum days)
+        $money_min_days_between = intval(getSetting('money_min_days_between', -1));
+        if ($money_min_days_between > 0) {
+            // Get the most recent money visit for this household
+            $stmt = $db->prepare("SELECT MAX(visit_date) as last_visit FROM visits WHERE customer_id IN ($placeholders) AND visit_type = 'money' AND visit_date < ?");
+            $stmt->execute(array_merge($household_customer_ids, [$visit_date]));
+            $last_visit = $stmt->fetch()['last_visit'];
+            
+            if ($last_visit) {
+                $days_since = floor(($visit_timestamp - strtotime($last_visit)) / 86400);
+                if ($days_since < $money_min_days_between) {
+                    throw new Exception("Minimum {$money_min_days_between} days required between money visits. Last money visit was {$days_since} days ago.");
+                }
+            }
         }
         
         // Validate and get amount
