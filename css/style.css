@@ -637,6 +637,98 @@ textarea {
     margin: 1rem 0;
 }
 
+/* DateTime input styling */
+.datetime-input {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 1rem;
+}
+
+.datetime-input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(44, 90, 160, 0.1);
+}
+
+/* Ionicon styling */
+ion-icon {
+    font-size: 1.2em;
+    vertical-align: middle;
+}
+
+.stat-icon ion-icon {
+    font-size: 2.5rem;
+}
+
+.btn-icon ion-icon {
+    font-size: 1.2rem;
+    vertical-align: middle;
+}
+
+/* Alert icons */
+.alert ion-icon {
+    margin-right: 0.5rem;
+}
+
+/* Settings Categories */
+.settings-categories {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 2rem;
+    border-bottom: 2px solid var(--border-color);
+    flex-wrap: wrap;
+}
+
+.settings-category {
+    padding: 1rem 1.5rem;
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    transition: all 0.3s;
+    margin-bottom: -2px;
+}
+
+.settings-category:hover {
+    background-color: var(--light-bg);
+}
+
+.settings-category.active {
+    border-bottom-color: var(--primary-color);
+    color: var(--primary-color);
+}
+
+.settings-category h3 {
+    margin: 0;
+    font-size: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.category-content {
+    display: none;
+}
+
+.category-content.active {
+    display: block;
+}
+
+.form-section {
+    margin: 2rem 0;
+    padding: 1.5rem;
+    background-color: var(--white);
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+}
+
+.form-section h3 {
+    margin-top: 0;
+    margin-bottom: 1.5rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid var(--border-color);
+}
+
 .no-results {
     padding: 1rem;
     text-align: center;

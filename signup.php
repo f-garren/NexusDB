@@ -26,14 +26,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_submit'])) {
             $signup_timestamp = date('Y-m-d H:i:s');
         }
         
-        // Format phone number to +1 (111) 111-1111 format
-        $phone = preg_replace('/[^0-9]/', '', $p['phone']); // Remove all non-digits
-        if (strlen($phone) == 10) {
-            $phone = '+1 (' . substr($phone, 0, 3) . ') ' . substr($phone, 3, 3) . '-' . substr($phone, 6);
-        } elseif (strlen($phone) == 11 && substr($phone, 0, 1) == '1') {
-            $phone = '+1 (' . substr($phone, 1, 3) . ') ' . substr($phone, 4, 3) . '-' . substr($phone, 7);
+        // Format phone number: take last 10 digits, everything before is country code
+        $phone_digits = preg_replace('/[^0-9]/', '', $p['phone']); // Remove all non-digits
+        
+        if (strlen($phone_digits) >= 10) {
+            // Take last 10 digits for the phone number
+            $phone_number = substr($phone_digits, -10);
+            // Everything before the last 10 digits is country code (default to 1 if empty)
+            $country_code = strlen($phone_digits) > 10 ? substr($phone_digits, 0, -10) : '1';
+            
+            $phone = '+' . $country_code . ' (' . substr($phone_number, 0, 3) . ') ' . substr($phone_number, 3, 3) . '-' . substr($phone_number, 6);
         } else {
-            $phone = $p['phone']; // Keep original if can't format
+            $phone = $p['phone']; // Keep original if less than 10 digits
         }
         
         $stmt = $db->prepare("INSERT INTO customers (signup_date, name, address, city, state, zip, phone, description_of_need, applied_before) 
@@ -347,7 +351,7 @@ include 'header.php';
                     <small class="help-text">Automatically recorded from system time</small>
                 </div>
                 <div id="manual_signup_datetime" style="display: none;">
-                    <input type="datetime-local" id="manual_signup_datetime_input" name="manual_signup_datetime" value="<?php echo date('Y-m-d\TH:i', time()); ?>" step="1">
+                    <input type="datetime-local" id="manual_signup_datetime_input" name="manual_signup_datetime" value="<?php echo date('Y-m-d\TH:i', time()); ?>" step="1" class="datetime-input" tabindex="-1">
                     <small class="help-text">Enter the actual signup date and time</small>
                 </div>
             </div>
@@ -594,85 +598,87 @@ document.getElementById('name').addEventListener('input', function() {
     document.getElementById('household_name_0').value = this.value;
 });
 
-// Format phone number as user types - progressive formatting without overriding
-(function() {
-    let phoneInput = document.getElementById('phone');
-    let isFormatting = false;
-    
-    function formatPhoneNumber(value) {
-        // Remove all non-digits
-        let digits = value.replace(/[^0-9]/g, '');
-        
-        if (digits.length === 0) return '';
-        
-        // Handle 11-digit numbers (with leading 1)
-        if (digits.length === 11 && digits[0] === '1') {
-            digits = digits.substring(1);
-        }
-        
-        // Limit to 10 digits
-        if (digits.length > 10) {
-            digits = digits.substring(0, 10);
-        }
-        
-        // Format based on length
-        if (digits.length <= 3) {
-            return '+1 (' + digits;
-        } else if (digits.length <= 6) {
-            return '+1 (' + digits.substring(0, 3) + ') ' + digits.substring(3);
-        } else {
-            return '+1 (' + digits.substring(0, 3) + ') ' + digits.substring(3, 6) + '-' + digits.substring(6, 10);
-        }
+// Real-time duplicate checking
+function checkDuplicate(field, value, callback) {
+    if (!value || value.length < 2) {
+        callback(null);
+        return;
     }
     
-    phoneInput.addEventListener('input', function(e) {
-        if (isFormatting) return;
-        
-        let input = e.target;
-        let cursorPos = input.selectionStart;
-        let oldValue = input.value;
-        let digitsBeforeCursor = oldValue.substring(0, cursorPos).replace(/[^0-9]/g, '').length;
-        
-        let formatted = formatPhoneNumber(input.value);
-        
-        if (input.value !== formatted) {
-            isFormatting = true;
-            input.value = formatted;
-            
-            // Calculate new cursor position based on digit count
-            let newCursorPos = formatted.length;
-            let digitCount = 0;
-            for (let i = 0; i < formatted.length; i++) {
-                if (/[0-9]/.test(formatted[i])) {
-                    digitCount++;
-                    if (digitCount >= digitsBeforeCursor) {
-                        newCursorPos = i + 1;
-                        break;
-                    }
-                }
+    let url = `check_duplicate.php?field=${field}&value=${encodeURIComponent(value)}`;
+    if (field === 'name') {
+        let phone = document.getElementById('phone').value;
+        if (phone) url += `&phone=${encodeURIComponent(phone)}`;
+    }
+    
+    fetch(url)
+        .then(response => response.json())
+        .then(data => {
+            callback(data);
+        })
+        .catch(error => {
+            console.error('Duplicate check error:', error);
+            callback(null);
+        });
+}
+
+// Add duplicate checking to name and phone fields
+document.getElementById('name').addEventListener('blur', function() {
+    let nameValue = this.value.trim();
+    let phoneValue = document.getElementById('phone').value.trim();
+    
+    if (nameValue.length >= 2) {
+        checkDuplicate('name', nameValue, function(result) {
+            let duplicateDiv = document.getElementById('name_duplicate');
+            if (!duplicateDiv) {
+                duplicateDiv = document.createElement('div');
+                duplicateDiv.id = 'name_duplicate';
+                duplicateDiv.className = 'duplicate-warning';
+                duplicateDiv.style.marginTop = '0.5rem';
+                document.getElementById('name').parentElement.appendChild(duplicateDiv);
             }
             
-            input.setSelectionRange(newCursorPos, newCursorPos);
-            isFormatting = false;
-        }
-    });
+            if (result && result.duplicate) {
+                duplicateDiv.innerHTML = '<span style="color: #d32f2f;"><ion-icon name="warning"></ion-icon> ' + result.message + '</span>';
+            } else {
+                duplicateDiv.innerHTML = '';
+            }
+        });
+    }
+});
+
+document.getElementById('phone').addEventListener('blur', function() {
+    let phoneValue = this.value.replace(/[^0-9]/g, '');
     
-    phoneInput.addEventListener('blur', function(e) {
-        // Final format on blur
-        let formatted = formatPhoneNumber(e.target.value);
-        if (e.target.value !== formatted) {
-            e.target.value = formatted;
+    if (phoneValue.length >= 10) {
+        // Format phone first
+        let digits = phoneValue;
+        if (digits.length >= 10) {
+            let phoneNumber = digits.substring(digits.length - 10);
+            let countryCode = digits.length > 10 ? digits.substring(0, digits.length - 10) : '1';
+            let formatted = '+' + countryCode + ' (' + phoneNumber.substring(0, 3) + ') ' + phoneNumber.substring(3, 6) + '-' + phoneNumber.substring(6);
+            this.value = formatted;
         }
-    });
-    
-    phoneInput.addEventListener('paste', function(e) {
-        e.preventDefault();
-        let pasted = (e.clipboardData || window.clipboardData).getData('text');
-        let formatted = formatPhoneNumber(pasted);
-        this.value = formatted;
-        this.setSelectionRange(formatted.length, formatted.length);
-    });
-})();
+        
+        // Then check for duplicates
+        checkDuplicate('phone', this.value, function(result) {
+            let duplicateDiv = document.getElementById('phone_duplicate');
+            if (!duplicateDiv) {
+                duplicateDiv = document.createElement('div');
+                duplicateDiv.id = 'phone_duplicate';
+                duplicateDiv.className = 'duplicate-warning';
+                duplicateDiv.style.marginTop = '0.5rem';
+                document.getElementById('phone').parentElement.appendChild(duplicateDiv);
+            }
+            
+            if (result && result.duplicate) {
+                duplicateDiv.innerHTML = '<span style="color: #d32f2f;"><ion-icon name="warning"></ion-icon> ' + result.message + '</span>';
+            } else {
+                duplicateDiv.innerHTML = '';
+            }
+        });
+    }
+});
 </script>
 
 <?php include 'footer.php'; ?>

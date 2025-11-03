@@ -48,7 +48,7 @@ include 'header.php';
 
     <div class="stats-grid">
         <div class="stat-card">
-            <div class="stat-icon">👥</div>
+            <div class="stat-icon"><ion-icon name="people"></ion-icon></div>
             <div class="stat-info">
                 <h3><?php echo number_format($total_customers); ?></h3>
                 <p>Total <?php echo htmlspecialchars(getCustomerTermPlural('Customers')); ?></p>
@@ -56,7 +56,7 @@ include 'header.php';
         </div>
         
         <div class="stat-card">
-            <div class="stat-icon">📅</div>
+            <div class="stat-icon"><ion-icon name="calendar"></ion-icon></div>
             <div class="stat-info">
                 <h3><?php echo number_format($recent_customers); ?></h3>
                 <p>New (Last 30 Days)</p>
@@ -64,7 +64,7 @@ include 'header.php';
         </div>
         
         <div class="stat-card">
-            <div class="stat-icon">🍽️</div>
+            <div class="stat-icon"><ion-icon name="restaurant"></ion-icon></div>
             <div class="stat-info">
                 <h3><?php echo number_format($food_visits_today); ?></h3>
                 <p>Food Visits Today</p>
@@ -72,7 +72,7 @@ include 'header.php';
         </div>
         
         <div class="stat-card">
-            <div class="stat-icon">🍽️</div>
+            <div class="stat-icon"><ion-icon name="restaurant"></ion-icon></div>
             <div class="stat-info">
                 <h3><?php echo number_format($food_visits_month); ?></h3>
                 <p>Food Visits This Month</p>
@@ -80,7 +80,7 @@ include 'header.php';
         </div>
         
         <div class="stat-card">
-            <div class="stat-icon">💰</div>
+            <div class="stat-icon"><ion-icon name="cash"></ion-icon></div>
             <div class="stat-info">
                 <h3><?php echo number_format($money_visits_today); ?></h3>
                 <p>Money Visits Today</p>
@@ -88,7 +88,7 @@ include 'header.php';
         </div>
         
         <div class="stat-card">
-            <div class="stat-icon">💰</div>
+            <div class="stat-icon"><ion-icon name="cash"></ion-icon></div>
             <div class="stat-info">
                 <h3><?php echo number_format($money_visits_month); ?></h3>
                 <p>Money Visits This Month</p>
@@ -96,7 +96,7 @@ include 'header.php';
         </div>
         
         <div class="stat-card">
-            <div class="stat-icon">🎫</div>
+            <div class="stat-icon"><ion-icon name="ticket"></ion-icon></div>
             <div class="stat-info">
                 <h3><?php echo number_format($voucher_visits_today); ?></h3>
                 <p>Voucher Visits Today</p>
@@ -104,7 +104,7 @@ include 'header.php';
         </div>
         
         <div class="stat-card">
-            <div class="stat-icon">🎫</div>
+            <div class="stat-icon"><ion-icon name="ticket"></ion-icon></div>
             <div class="stat-info">
                 <h3><?php echo number_format($voucher_visits_month); ?></h3>
                 <p>Voucher Visits This Month</p>
@@ -114,19 +114,19 @@ include 'header.php';
 
     <div class="action-buttons">
         <a href="signup.php" class="btn btn-primary btn-large">
-            <span class="btn-icon">➕</span>
+            <span class="btn-icon"><ion-icon name="add"></ion-icon></span>
             <span>New <?php echo htmlspecialchars(getCustomerTerm('Customer')); ?> Signup</span>
         </a>
         <a href="customers.php" class="btn btn-secondary btn-large">
-            <span class="btn-icon">🔍</span>
+            <span class="btn-icon"><ion-icon name="search"></ion-icon></span>
             <span>Search <?php echo htmlspecialchars(getCustomerTermPlural('Customers')); ?></span>
         </a>
         <a href="visits_food.php" class="btn btn-secondary btn-large">
-            <span class="btn-icon">🍽️</span>
+            <span class="btn-icon"><ion-icon name="restaurant"></ion-icon></span>
             <span>Record Food Visit</span>
         </a>
         <a href="reports.php" class="btn btn-secondary btn-large">
-            <span class="btn-icon">📈</span>
+            <span class="btn-icon"><ion-icon name="stats-chart"></ion-icon></span>
             <span>Reports</span>
         </a>
     </div>

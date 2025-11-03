@@ -82,6 +82,15 @@ function getCustomerTermPlural($default = 'Customers') {
     return getSetting('customer_term_plural', $default);
 }
 
+// Helper function to convert hex to RGB
+function hex2rgb($hex) {
+    $hex = str_replace('#', '', $hex);
+    $r = hexdec(substr($hex, 0, 2));
+    $g = hexdec(substr($hex, 2, 2));
+    $b = hexdec(substr($hex, 4, 2));
+    return ['r' => $r, 'g' => $g, 'b' => $b];
+}
+
 // Load timezone from settings if available, otherwise use default
 // This is called after Database class and getSetting function are defined
 try {

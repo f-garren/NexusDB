@@ -45,13 +45,65 @@ $redeemed_vouchers = $stmt->fetch()['total'];
 $stmt = $db->query("SELECT SUM(amount) as total FROM vouchers WHERE status = 'redeemed'");
 $total_redeemed_amount = $stmt->fetch()['total'] ?? 0;
 
-// Recent vouchers
-$stmt = $db->query("SELECT v.*, c.name as customer_name, c.phone 
-                   FROM vouchers v 
-                   INNER JOIN customers c ON v.customer_id = c.id 
-                   ORDER BY v.issued_date DESC 
-                   LIMIT 20");
-$recent_vouchers = $stmt->fetchAll();
+// Get voucher filter parameters
+$filter_search = $_GET['voucher_search'] ?? '';
+$filter_issued_date = $_GET['voucher_issued_date'] ?? '';
+$filter_redeemed_date = $_GET['voucher_redeemed_date'] ?? '';
+
+// Build voucher query with filters
+$where_conditions = [];
+$params = [];
+
+if (!empty($filter_search)) {
+    $stmt = $db->prepare("SELECT DISTINCT customer_id FROM household_members WHERE name LIKE ?");
+    $stmt->execute(["%$filter_search%"]);
+    $household_customer_ids = $stmt->fetchAll(PDO::FETCH_COLUMN);
+    
+    if (!empty($household_customer_ids)) {
+        $household_placeholders = str_repeat('?,', count($household_customer_ids) - 1) . '?';
+        $where_conditions[] = "(v.voucher_code LIKE ? OR c.name LIKE ? OR c.phone LIKE ? OR v.customer_id IN ($household_placeholders))";
+        $search_term = "%$filter_search%";
+        $params[] = $search_term;
+        $params[] = $search_term;
+        $params[] = $search_term;
+        $params = array_merge($params, $household_customer_ids);
+    } else {
+        $where_conditions[] = "(v.voucher_code LIKE ? OR c.name LIKE ? OR c.phone LIKE ?)";
+        $search_term = "%$filter_search%";
+        $params[] = $search_term;
+        $params[] = $search_term;
+        $params[] = $search_term;
+    }
+}
+
+if (!empty($filter_issued_date)) {
+    $where_conditions[] = "DATE(v.issued_date) = ?";
+    $params[] = $filter_issued_date;
+}
+
+if (!empty($filter_redeemed_date)) {
+    $where_conditions[] = "DATE(v.redeemed_date) = ?";
+    $params[] = $filter_redeemed_date;
+}
+
+$where_clause = !empty($where_conditions) ? "WHERE " . implode(" AND ", $where_conditions) : "";
+
+// Get vouchers with filters
+$query = "SELECT v.*, c.name as customer_name, c.phone 
+         FROM vouchers v 
+         INNER JOIN customers c ON v.customer_id = c.id 
+         $where_clause
+         ORDER BY v.issued_date DESC 
+         LIMIT 200";
+
+if (!empty($params)) {
+    $stmt = $db->prepare($query);
+    $stmt->execute($params);
+    $recent_vouchers = $stmt->fetchAll();
+} else {
+    $stmt = $db->query($query);
+    $recent_vouchers = $stmt->fetchAll();
+}
 ?>
 
 <div class="container">
@@ -63,17 +115,17 @@ $recent_vouchers = $stmt->fetchAll();
         </div>
     </div>
 
-    <div class="stats-grid">
+        <div class="stats-grid">
         <div class="stat-card">
-            <div class="stat-icon">👥</div>
+            <div class="stat-icon"><ion-icon name="people"></ion-icon></div>
             <div class="stat-info">
                 <h3><?php echo number_format($total_customers); ?></h3>
-                <p>Total Customers</p>
+                <p>Total <?php echo htmlspecialchars(getCustomerTermPlural('Customers')); ?></p>
             </div>
         </div>
         
         <div class="stat-card">
-            <div class="stat-icon">📅</div>
+            <div class="stat-icon"><ion-icon name="calendar"></ion-icon></div>
             <div class="stat-info">
                 <h3><?php echo number_format($visits_30_days); ?></h3>
                 <p>Visits (Last 30 Days)</p>
@@ -81,7 +133,7 @@ $recent_vouchers = $stmt->fetchAll();
         </div>
         
         <div class="stat-card">
-            <div class="stat-icon">📊</div>
+            <div class="stat-icon"><ion-icon name="stats-chart"></ion-icon></div>
             <div class="stat-info">
                 <h3><?php echo number_format($visits_7_days); ?></h3>
                 <p>Visits (Last 7 Days)</p>
@@ -145,7 +197,7 @@ $recent_vouchers = $stmt->fetchAll();
         <h2>Voucher Statistics</h2>
         <div class="stats-grid" style="margin-bottom: 2rem;">
             <div class="stat-card">
-                <div class="stat-icon">🎫</div>
+                <div class="stat-icon"><ion-icon name="ticket"></ion-icon></div>
                 <div class="stat-info">
                     <h3><?php echo number_format($total_vouchers); ?></h3>
                     <p>Total Vouchers</p>
@@ -153,7 +205,7 @@ $recent_vouchers = $stmt->fetchAll();
             </div>
             
             <div class="stat-card">
-                <div class="stat-icon">✓</div>
+                <div class="stat-icon"><ion-icon name="checkmark-circle"></ion-icon></div>
                 <div class="stat-info">
                     <h3><?php echo number_format($active_vouchers); ?></h3>
                     <p>Active Vouchers</p>
@@ -161,7 +213,7 @@ $recent_vouchers = $stmt->fetchAll();
             </div>
             
             <div class="stat-card">
-                <div class="stat-icon">💰</div>
+                <div class="stat-icon"><ion-icon name="cash"></ion-icon></div>
                 <div class="stat-info">
                     <h3><?php echo number_format($redeemed_vouchers); ?></h3>
                     <p>Redeemed Vouchers</p>
@@ -169,7 +221,7 @@ $recent_vouchers = $stmt->fetchAll();
             </div>
             
             <div class="stat-card">
-                <div class="stat-icon">💵</div>
+                <div class="stat-icon"><ion-icon name="dollar"></ion-icon></div>
                 <div class="stat-info">
                     <h3>$<?php echo number_format($total_redeemed_amount, 2); ?></h3>
                     <p>Total Redeemed Value</p>
@@ -177,7 +229,39 @@ $recent_vouchers = $stmt->fetchAll();
             </div>
         </div>
 
-        <h3>Recent Vouchers</h3>
+        <div class="search-box" style="margin-bottom: 2rem;">
+            <form method="GET" action="" class="filter-form">
+                <input type="hidden" name="voucher_search" value="">
+                <div class="filter-row">
+                    <div class="filter-group">
+                        <label for="voucher_search">Search Vouchers</label>
+                        <input type="text" name="voucher_search" id="voucher_search" placeholder="Voucher code, customer name, phone, or household name..." value="<?php echo htmlspecialchars($filter_search); ?>" class="search-input">
+                    </div>
+                    
+                    <div class="filter-group">
+                        <label for="voucher_issued_date">Issued On Date</label>
+                        <input type="date" name="voucher_issued_date" id="voucher_issued_date" value="<?php echo htmlspecialchars($filter_issued_date); ?>">
+                    </div>
+                    
+                    <div class="filter-group">
+                        <label for="voucher_redeemed_date">Redeemed On Date</label>
+                        <input type="date" name="voucher_redeemed_date" id="voucher_redeemed_date" value="<?php echo htmlspecialchars($filter_redeemed_date); ?>">
+                    </div>
+                    
+                    <div class="filter-group">
+                        <label>&nbsp;</label>
+                        <div>
+                            <button type="submit" class="btn btn-primary">Filter</button>
+                            <?php if (!empty($filter_search) || !empty($filter_issued_date) || !empty($filter_redeemed_date)): ?>
+                                <a href="reports.php" class="btn btn-secondary">Clear</a>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
+
+        <h3>Vouchers</h3>
         <?php if (count($recent_vouchers) > 0): ?>
             <table class="data-table">
                 <thead>

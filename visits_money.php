@@ -71,12 +71,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_submit'])) {
             throw new Exception("Money assistance limit reached. This household has received money assistance {$money_visits_count} times (limit: {$money_limit} times total).");
         }
         
+        // Validate and get amount
+        if (empty($p['amount'])) {
+            throw new Exception("Amount is required for money visits");
+        }
+        $amount = floatval($p['amount']);
+        if ($amount <= 0) {
+            throw new Exception("Amount must be greater than 0");
+        }
+        
         // Insert visit
         $notes = $p['notes'] ?? '';
-        $stmt = $db->prepare("INSERT INTO visits (customer_id, visit_date, visit_type, notes) VALUES (?, ?, 'money', ?)");
-        $stmt->execute([$customer_id, $visit_date, $notes]);
+        $stmt = $db->prepare("INSERT INTO visits (customer_id, visit_date, visit_type, amount, notes) VALUES (?, ?, 'money', ?, ?)");
+        $stmt->execute([$customer_id, $visit_date, $amount, $notes]);
         
-        $success = "Money visit recorded successfully! <a href='customer_view.php?id=" . $customer_id . "'>View customer</a>";
+        $success = "Money visit recorded successfully! Amount: $" . number_format($amount, 2) . " <a href='customer_view.php?id=" . $customer_id . "'>View customer</a>";
         
         // Clear customer selection
         $customer = null;
@@ -133,6 +142,9 @@ include 'header.php';
                     <tr><th>Customer:</th><td><?php echo htmlspecialchars($customer['name']); ?></td></tr>
                     <tr><th>Phone:</th><td><?php echo htmlspecialchars($customer['phone']); ?></td></tr>
                     <tr><th>Visit Type:</th><td><strong>Money</strong></td></tr>
+                    <?php if (!empty($form_data['amount'])): ?>
+                    <tr><th>Amount:</th><td>$<?php echo number_format(floatval($form_data['amount']), 2); ?></td></tr>
+                    <?php endif; ?>
                     <tr><th>Visit Date & Time:</th><td><?php 
                         if (!empty($form_data['override_visit_date']) && !empty($form_data['manual_visit_datetime'])) {
                             echo date('F d, Y \a\t g:i A', strtotime($form_data['manual_visit_datetime']));
@@ -184,6 +196,12 @@ include 'header.php';
             <?php endif; ?>
 
             <div class="form-group">
+                <label for="amount">Amount ($) <span class="required">*</span></label>
+                <input type="number" id="amount" name="amount" step="0.01" min="0.01" placeholder="0.00" required>
+                <small class="help-text">Enter the money distribution amount</small>
+            </div>
+
+            <div class="form-group">
                 <label for="visit_date">Visit Date & Time</label>
                 <div class="checkbox-group">
                     <label style="display: flex; align-items: center; gap: 0.5rem; font-weight: normal;">
@@ -196,7 +214,7 @@ include 'header.php';
                     <small class="help-text">Automatically recorded from system time</small>
                 </div>
                 <div id="manual_visit_datetime" style="display: none;">
-                    <input type="datetime-local" id="manual_visit_datetime_input" name="manual_visit_datetime" value="<?php echo date('Y-m-d\TH:i'); ?>">
+                    <input type="datetime-local" id="manual_visit_datetime_input" name="manual_visit_datetime" value="<?php echo date('Y-m-d\TH:i'); ?>" class="datetime-input" tabindex="-1">
                     <small class="help-text">Enter the actual visit date and time</small>
                 </div>
                 <input type="hidden" name="visit_date" value="<?php echo date('Y-m-d H:i:s'); ?>">
@@ -254,12 +272,8 @@ if (customerSearch) {
             fetch(`customer_search.php?q=${encodeURIComponent(query)}`)
                 .then(response => response.json())
                 .then(data => {
-                    if (data.length === 1) {
-                        const customer = data[0];
-                        customerIdInput.value = customer.id;
-                        customerSearch.value = customer.name;
-                        window.location.href = `visits_money.php?customer_id=${customer.id}`;
-                    } else if (data.length > 1) {
+                    // Don't auto-select, redirect to search page
+                    if (data.length > 0) {
                         window.location.href = `customers.php?search=${encodeURIComponent(query)}`;
                     }
                 })

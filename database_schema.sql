@@ -87,6 +87,7 @@ CREATE TABLE IF NOT EXISTS `visits` (
   `customer_id` int(11) NOT NULL,
   `visit_date` datetime NOT NULL,
   `visit_type` enum('food','money','voucher') NOT NULL DEFAULT 'food',
+  `amount` decimal(10,2) DEFAULT NULL,
   `notes` text,
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),

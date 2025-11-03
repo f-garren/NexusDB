@@ -51,20 +51,34 @@ $visits_per_month = getSetting('visits_per_month_limit', 2);
 $visits_per_year = getSetting('visits_per_year_limit', 12);
 $min_days_between = getSetting('min_days_between_visits', 14);
 
-// Calculate visit statistics
-$current_month_visits = 0;
-$current_year_visits = 0;
+// Calculate visit statistics by type
+$food_visits_this_month = 0;
+$food_visits_this_year = 0;
+$money_visits_total = 0;
+$voucher_visits_total = 0;
+$last_food_visit_date = null;
 $last_visit_date = null;
 
 foreach ($visits as $visit) {
     $visit_date = strtotime($visit['visit_date']);
     $now = time();
+    $visit_type = $visit['visit_type'] ?? 'food';
     
-    if (date('Y-m', $visit_date) === date('Y-m', $now)) {
-        $current_month_visits++;
-    }
-    if (date('Y', $visit_date) === date('Y', $now)) {
-        $current_year_visits++;
+    if ($visit_type === 'food') {
+        if (date('Y-m', $visit_date) === date('Y-m', $now)) {
+            $food_visits_this_month++;
+        }
+        if (date('Y', $visit_date) === date('Y', $now)) {
+            $food_visits_this_year++;
+        }
+        
+        if ($last_food_visit_date === null || $visit_date > $last_food_visit_date) {
+            $last_food_visit_date = $visit_date;
+        }
+    } elseif ($visit_type === 'money') {
+        $money_visits_total++;
+    } elseif ($visit_type === 'voucher') {
+        $voucher_visits_total++;
     }
     
     if ($last_visit_date === null || $visit_date > $last_visit_date) {
@@ -72,7 +86,7 @@ foreach ($visits as $visit) {
     }
 }
 
-$days_since_last_visit = $last_visit_date ? floor((time() - $last_visit_date) / 86400) : null;
+$days_since_last_food_visit = $last_food_visit_date ? floor((time() - $last_food_visit_date) / 86400) : null;
 
 $page_title = "Customer Details";
 include 'header.php';
@@ -88,31 +102,31 @@ include 'header.php';
     </div>
 
     <!-- Visit Status Alert -->
-    <?php if ($days_since_last_visit !== null): ?>
-        <?php if ($days_since_last_visit < $min_days_between): ?>
+    <?php if ($days_since_last_food_visit !== null): ?>
+        <?php if ($days_since_last_food_visit < $min_days_between): ?>
             <div class="alert alert-warning">
-                ⚠️ Last visit was <?php echo $days_since_last_visit; ?> days ago. Minimum <?php echo $min_days_between; ?> days required between visits.
+                <ion-icon name="warning"></ion-icon> Last food visit was <?php echo $days_since_last_food_visit; ?> days ago. Minimum <?php echo $min_days_between; ?> days required between food visits.
             </div>
         <?php endif; ?>
     <?php endif; ?>
     
-    <?php if ($current_month_visits >= $visits_per_month): ?>
+    <?php if ($food_visits_this_month >= $visits_per_month): ?>
         <div class="alert alert-error">
-            ❌ Monthly visit limit reached (<?php echo $current_month_visits; ?>/<?php echo $visits_per_month; ?>)
+            <ion-icon name="close-circle"></ion-icon> Monthly food visit limit reached (<?php echo $food_visits_this_month; ?>/<?php echo $visits_per_month; ?>)
         </div>
-    <?php elseif ($current_month_visits > 0): ?>
+    <?php elseif ($food_visits_this_month > 0): ?>
         <div class="alert alert-info">
-            ℹ️ <?php echo $current_month_visits; ?>/<?php echo $visits_per_month; ?> visits this month
+            <ion-icon name="information-circle"></ion-icon> <?php echo $food_visits_this_month; ?>/<?php echo $visits_per_month; ?> food visits this month
         </div>
     <?php endif; ?>
     
-    <?php if ($current_year_visits >= $visits_per_year): ?>
+    <?php if ($food_visits_this_year >= $visits_per_year): ?>
         <div class="alert alert-error">
-            ❌ Yearly visit limit reached (<?php echo $current_year_visits; ?>/<?php echo $visits_per_year; ?>)
+            <ion-icon name="close-circle"></ion-icon> Yearly food visit limit reached (<?php echo $food_visits_this_year; ?>/<?php echo $visits_per_year; ?>)
         </div>
-    <?php elseif ($current_year_visits > 0): ?>
+    <?php elseif ($food_visits_this_year > 0): ?>
         <div class="alert alert-info">
-            ℹ️ <?php echo $current_year_visits; ?>/<?php echo $visits_per_year; ?> visits this year
+            <ion-icon name="information-circle"></ion-icon> <?php echo $food_visits_this_year; ?>/<?php echo $visits_per_year; ?> food visits this year
         </div>
     <?php endif; ?>
 
@@ -266,7 +280,17 @@ include 'header.php';
                     <strong>Visit Summary:</strong>
                     <?php 
                     $visit_summary = [];
-                    if (!empty($visit_counts['food'])) $visit_summary[] = "Food: " . $visit_counts['food'];
+                    
+                    // Food visits - show total and this month/year
+                    if (!empty($visit_counts['food'])) {
+                        $visit_summary[] = "Food visits (total): " . $visit_counts['food'];
+                    }
+                    if ($food_visits_this_month > 0) {
+                        $visit_summary[] = "Food visits this month: {$food_visits_this_month}/{$visits_per_month}";
+                    }
+                    if ($food_visits_this_year > 0) {
+                        $visit_summary[] = "Food visits this year: {$food_visits_this_year}/{$visits_per_year}";
+                    }
                     
                     // Money visits with limit counter
                     $money_limit = intval(getSetting('money_distribution_limit', 3));
@@ -278,10 +302,13 @@ include 'header.php';
                                            WHERE hm2.customer_id = ? AND v.visit_type = 'money'");
                         $stmt->execute([$customer_id]);
                         $household_money = $stmt->fetch()['count'];
-                        $visit_summary[] = "Money: {$household_money}/{$money_limit}";
+                        $visit_summary[] = "Money visits (household): {$household_money}/{$money_limit}";
                     }
                     
-                    if (!empty($visit_counts['voucher'])) $visit_summary[] = "Vouchers: " . $visit_counts['voucher'];
+                    if (!empty($visit_counts['voucher'])) {
+                        $visit_summary[] = "Voucher visits (total): " . $visit_counts['voucher'];
+                    }
+                    
                     echo !empty($visit_summary) ? implode(" | ", $visit_summary) : "No visits";
                     ?>
                 </div>
@@ -289,7 +316,8 @@ include 'header.php';
                     <thead>
                         <tr>
                             <th>Date</th>
-                            <th>Type</th>
+                            <th>Visit Type</th>
+                            <th>Amount</th>
                             <th>Notes</th>
                         </tr>
                     </thead>
@@ -298,6 +326,7 @@ include 'header.php';
                             <tr>
                                 <td><?php echo date('M d, Y \a\t g:i A', strtotime($visit['visit_date'])); ?></td>
                                 <td><?php echo ucfirst($visit['visit_type'] ?? 'food'); ?></td>
+                                <td><?php echo ($visit['visit_type'] === 'money' && !empty($visit['amount'])) ? '$' . number_format($visit['amount'], 2) : '-'; ?></td>
                                 <td><?php echo nl2br(htmlspecialchars($visit['notes'] ?? '')); ?></td>
                             </tr>
                         <?php endforeach; ?>

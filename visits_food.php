@@ -207,7 +207,7 @@ include 'header.php';
                     <small class="help-text">Automatically recorded from system time</small>
                 </div>
                 <div id="manual_visit_datetime" style="display: none;">
-                    <input type="datetime-local" id="manual_visit_datetime_input" name="manual_visit_datetime" value="<?php echo date('Y-m-d\TH:i'); ?>">
+                    <input type="datetime-local" id="manual_visit_datetime_input" name="manual_visit_datetime" value="<?php echo date('Y-m-d\TH:i'); ?>" class="datetime-input" tabindex="-1">
                     <small class="help-text">Enter the actual visit date and time</small>
                 </div>
                 <input type="hidden" name="visit_date" value="<?php echo date('Y-m-d H:i:s'); ?>">
@@ -265,14 +265,8 @@ if (customerSearch) {
             fetch(`customer_search.php?q=${encodeURIComponent(query)}`)
                 .then(response => response.json())
                 .then(data => {
-                    if (data.length === 1) {
-                        // Auto-select if only one result
-                        const customer = data[0];
-                        customerIdInput.value = customer.id;
-                        customerSearch.value = customer.name;
-                        window.location.href = `visits_food.php?customer_id=${customer.id}`;
-                    } else if (data.length > 1) {
-                        // Multiple results - redirect to customers page
+                    // Don't auto-select, just show message or redirect to search page
+                    if (data.length > 0) {
                         window.location.href = `customers.php?search=${encodeURIComponent(query)}`;
                     }
                 })
