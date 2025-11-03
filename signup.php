@@ -202,14 +202,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['confirm_submit'])) {
     $show_confirmation = true;
 }
 
-$page_title = "New Customer Signup";
+$page_title = "New " . getCustomerTerm('Customer') . " Signup";
 include 'header.php';
 ?>
 
 <div class="container">
     <div class="page-header">
-        <h1>New Customer Signup</h1>
-        <p class="lead">Register a new customer for food distribution services</p>
+        <h1>New <?php echo htmlspecialchars(getCustomerTerm('Customer')); ?> Signup</h1>
+        <p class="lead">Register a new <?php echo strtolower(getCustomerTerm('customer')); ?> for food distribution services</p>
     </div>
 
     <?php if ($error): ?>
@@ -347,7 +347,7 @@ include 'header.php';
                     <small class="help-text">Automatically recorded from system time</small>
                 </div>
                 <div id="manual_signup_datetime" style="display: none;">
-                    <input type="datetime-local" id="manual_signup_datetime_input" name="manual_signup_datetime" value="<?php echo date('Y-m-d\TH:i'); ?>">
+                    <input type="datetime-local" id="manual_signup_datetime_input" name="manual_signup_datetime" value="<?php echo date('Y-m-d\TH:i', time()); ?>" step="1">
                     <small class="help-text">Enter the actual signup date and time</small>
                 </div>
             </div>
@@ -594,61 +594,58 @@ document.getElementById('name').addEventListener('input', function() {
     document.getElementById('household_name_0').value = this.value;
 });
 
-// Format phone number as user types
+// Format phone number as user types - progressive formatting without overriding
 (function() {
     let phoneInput = document.getElementById('phone');
     let isFormatting = false;
+    
+    function formatPhoneNumber(value) {
+        // Remove all non-digits
+        let digits = value.replace(/[^0-9]/g, '');
+        
+        if (digits.length === 0) return '';
+        
+        // Handle 11-digit numbers (with leading 1)
+        if (digits.length === 11 && digits[0] === '1') {
+            digits = digits.substring(1);
+        }
+        
+        // Limit to 10 digits
+        if (digits.length > 10) {
+            digits = digits.substring(0, 10);
+        }
+        
+        // Format based on length
+        if (digits.length <= 3) {
+            return '+1 (' + digits;
+        } else if (digits.length <= 6) {
+            return '+1 (' + digits.substring(0, 3) + ') ' + digits.substring(3);
+        } else {
+            return '+1 (' + digits.substring(0, 3) + ') ' + digits.substring(3, 6) + '-' + digits.substring(6, 10);
+        }
+    }
     
     phoneInput.addEventListener('input', function(e) {
         if (isFormatting) return;
         
         let input = e.target;
-        let value = input.value.replace(/[^0-9]/g, '');
+        let cursorPos = input.selectionStart;
+        let oldValue = input.value;
+        let digitsBeforeCursor = oldValue.substring(0, cursorPos).replace(/[^0-9]/g, '').length;
         
-        // Don't format if user is deleting or if field is empty
-        if (value.length === 0) {
-            input.value = '';
-            return;
-        }
+        let formatted = formatPhoneNumber(input.value);
         
-        // Limit to 11 digits (1 + 10 digit number)
-        if (value.length > 11) {
-            value = value.substring(0, 11);
-        }
-        
-        // Remove leading 1 if present (we always add +1)
-        if (value.length === 11 && value[0] === '1') {
-            value = value.substring(1);
-        }
-        
-        // Format based on length
-        let formatted = '';
-        if (value.length === 0) {
-            formatted = '';
-        } else if (value.length <= 3) {
-            formatted = '+1 (' + value;
-        } else if (value.length <= 6) {
-            formatted = '+1 (' + value.substring(0, 3) + ') ' + value.substring(3);
-        } else {
-            formatted = '+1 (' + value.substring(0, 3) + ') ' + value.substring(3, 6) + '-' + value.substring(6, 10);
-        }
-        
-        // Only update if formatted value is different
         if (input.value !== formatted) {
             isFormatting = true;
-            let cursorPos = input.selectionStart;
-            let oldValue = input.value;
-            let digitsBeforeCursor = oldValue.substring(0, cursorPos).replace(/[^0-9]/g, '').length;
-            
             input.value = formatted;
             
-            // Try to maintain cursor position intelligently
+            // Calculate new cursor position based on digit count
             let newCursorPos = formatted.length;
             let digitCount = 0;
             for (let i = 0; i < formatted.length; i++) {
                 if (/[0-9]/.test(formatted[i])) {
                     digitCount++;
-                    if (digitCount > digitsBeforeCursor) {
+                    if (digitCount >= digitsBeforeCursor) {
                         newCursorPos = i + 1;
                         break;
                     }
@@ -660,11 +657,20 @@ document.getElementById('name').addEventListener('input', function() {
         }
     });
     
-    // Handle paste events
+    phoneInput.addEventListener('blur', function(e) {
+        // Final format on blur
+        let formatted = formatPhoneNumber(e.target.value);
+        if (e.target.value !== formatted) {
+            e.target.value = formatted;
+        }
+    });
+    
     phoneInput.addEventListener('paste', function(e) {
-        setTimeout(function() {
-            phoneInput.dispatchEvent(new Event('input'));
-        }, 0);
+        e.preventDefault();
+        let pasted = (e.clipboardData || window.clipboardData).getData('text');
+        let formatted = formatPhoneNumber(pasted);
+        this.value = formatted;
+        this.setSelectionRange(formatted.length, formatted.length);
     });
 })();
 </script>

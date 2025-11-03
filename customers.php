@@ -81,8 +81,8 @@ include 'header.php';
 
 <div class="container">
     <div class="page-header">
-        <h1>Customers</h1>
-        <p class="lead">Search and manage customer records</p>
+        <h1><?php echo htmlspecialchars(getCustomerTermPlural('Customers')); ?></h1>
+        <p class="lead">Search and manage <?php echo strtolower(getCustomerTermPlural('customer')); ?> records</p>
     </div>
 
     <div class="search-box">
@@ -169,9 +169,9 @@ include 'header.php';
         </div>
     <?php else: ?>
         <div class="no-data">
-            <p>No customers found<?php echo !empty($search) ? ' matching your search' : ''; ?>.</p>
+            <p>No <?php echo strtolower(getCustomerTermPlural('customers')); ?> found<?php echo !empty($search) ? ' matching your search' : ''; ?>.</p>
             <?php if (empty($search)): ?>
-                <a href="signup.php" class="btn btn-primary">Add First Customer</a>
+                <a href="signup.php" class="btn btn-primary">Add <?php echo htmlspecialchars(getCustomerTerm('Customer')); ?></a>
             <?php endif; ?>
         </div>
     <?php endif; ?>

@@ -267,7 +267,20 @@ include 'header.php';
                     <?php 
                     $visit_summary = [];
                     if (!empty($visit_counts['food'])) $visit_summary[] = "Food: " . $visit_counts['food'];
-                    if (!empty($visit_counts['money'])) $visit_summary[] = "Money: " . $visit_counts['money'];
+                    
+                    // Money visits with limit counter
+                    $money_limit = intval(getSetting('money_distribution_limit', 3));
+                    if (!empty($visit_counts['money'])) {
+                        // Get household money count
+                        $stmt = $db->prepare("SELECT COUNT(*) as count FROM visits v 
+                                           INNER JOIN household_members hm1 ON v.customer_id = hm1.customer_id
+                                           INNER JOIN household_members hm2 ON hm1.name = hm2.name
+                                           WHERE hm2.customer_id = ? AND v.visit_type = 'money'");
+                        $stmt->execute([$customer_id]);
+                        $household_money = $stmt->fetch()['count'];
+                        $visit_summary[] = "Money: {$household_money}/{$money_limit}";
+                    }
+                    
                     if (!empty($visit_counts['voucher'])) $visit_summary[] = "Vouchers: " . $visit_counts['voucher'];
                     echo !empty($visit_summary) ? implode(" | ", $visit_summary) : "No visits";
                     ?>

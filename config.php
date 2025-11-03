@@ -72,6 +72,16 @@ function setSetting($key, $value) {
     return $stmt->execute([$key, $value, $value]);
 }
 
+// Helper function to get customer term (singular)
+function getCustomerTerm($default = 'Customer') {
+    return getSetting('customer_term', $default);
+}
+
+// Helper function to get customer term plural
+function getCustomerTermPlural($default = 'Customers') {
+    return getSetting('customer_term_plural', $default);
+}
+
 // Load timezone from settings if available, otherwise use default
 // This is called after Database class and getSetting function are defined
 try {

@@ -7,6 +7,9 @@ $mode = getSetting('settings_mode', 'simple');
 $current_timezone = getSetting('timezone', 'America/Boise');
 $organization_name = getSetting('organization_name', 'NexusDB');
 $shop_name = getSetting('shop_name', 'Partner Store');
+$customer_term = getSetting('customer_term', 'Customer');
+$customer_term_plural = getSetting('customer_term_plural', 'Customers');
+$money_limit = intval(getSetting('money_distribution_limit', 3));
 
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -40,6 +43,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (isset($_POST['min_days_between_visits'])) {
                 setSetting('min_days_between_visits', intval($_POST['min_days_between_visits']));
             }
+            
+            if (isset($_POST['shop_name'])) {
+                setSetting('shop_name', $_POST['shop_name']);
+            }
+            
+            if (isset($_POST['customer_term'])) {
+                setSetting('customer_term', $_POST['customer_term']);
+            }
+            
+            if (isset($_POST['customer_term_plural'])) {
+                setSetting('customer_term_plural', $_POST['customer_term_plural']);
+            }
+            
+            if (isset($_POST['money_distribution_limit'])) {
+                setSetting('money_distribution_limit', intval($_POST['money_distribution_limit']));
+            }
         }
         
         // Save advanced mode settings
@@ -62,6 +81,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             if (isset($_POST['min_days_between_visits'])) {
                 setSetting('min_days_between_visits', intval($_POST['min_days_between_visits']));
+            }
+            
+            if (isset($_POST['shop_name'])) {
+                setSetting('shop_name', $_POST['shop_name']);
+            }
+            
+            if (isset($_POST['customer_term'])) {
+                setSetting('customer_term', $_POST['customer_term']);
+            }
+            
+            if (isset($_POST['customer_term_plural'])) {
+                setSetting('customer_term_plural', $_POST['customer_term_plural']);
+            }
+            
+            if (isset($_POST['money_distribution_limit'])) {
+                setSetting('money_distribution_limit', intval($_POST['money_distribution_limit']));
             }
         }
         
@@ -149,8 +184,20 @@ include 'header.php';
                     <small class="help-text">Name of the shop where vouchers can be redeemed</small>
                 </div>
                 
+                <div class="form-group">
+                    <label for="customer_term"><?php echo htmlspecialchars(getCustomerTerm('Customer')); ?> Term (Singular)</label>
+                    <input type="text" id="customer_term" name="customer_term" value="<?php echo htmlspecialchars($customer_term); ?>" placeholder="e.g., Customer, Client, Participant">
+                    <small class="help-text">Term used throughout the application (singular form)</small>
+                </div>
+                
+                <div class="form-group">
+                    <label for="customer_term_plural"><?php echo htmlspecialchars(getCustomerTerm('Customer')); ?> Term (Plural)</label>
+                    <input type="text" id="customer_term_plural" name="customer_term_plural" value="<?php echo htmlspecialchars($customer_term_plural); ?>" placeholder="e.g., Customers, Clients, Participants">
+                    <small class="help-text">Term used throughout the application (plural form)</small>
+                </div>
+                
                 <div class="form-section">
-                    <h3>Visit Limits</h3>
+                    <h3>Visit Limits (Food Visits Only)</h3>
                     
                     <div class="form-group">
                         <label for="visits_per_month_limit">Visits Per Month Limit</label>
@@ -167,7 +214,17 @@ include 'header.php';
                     <div class="form-group">
                         <label for="min_days_between_visits">Minimum Days Between Visits</label>
                         <input type="number" id="min_days_between_visits" name="min_days_between_visits" value="<?php echo $min_days_between; ?>" min="1" required>
-                        <small class="help-text">Minimum number of days that must pass between customer visits</small>
+                        <small class="help-text">Minimum number of days that must pass between food visits</small>
+                    </div>
+                </div>
+                
+                <div class="form-section">
+                    <h3>Money Distribution Limit</h3>
+                    
+                    <div class="form-group">
+                        <label for="money_distribution_limit">Money Distribution Limit Per Household</label>
+                        <input type="number" id="money_distribution_limit" name="money_distribution_limit" value="<?php echo $money_limit; ?>" min="1" required>
+                        <small class="help-text">Maximum number of money distributions allowed per household (all time)</small>
                     </div>
                 </div>
                 

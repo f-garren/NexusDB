@@ -3,8 +3,12 @@ require_once 'config.php';
 
 $db = getDB();
 
-// Get all money visits
-$stmt = $db->query("SELECT v.*, c.name as customer_name, c.phone, c.address, c.city, c.state 
+// Get all money visits with household money count
+$stmt = $db->query("SELECT v.*, c.name as customer_name, c.phone, c.address, c.city, c.state,
+                   (SELECT COUNT(*) FROM visits v2 
+                    INNER JOIN household_members hm1 ON v2.customer_id = hm1.customer_id
+                    INNER JOIN household_members hm2 ON hm1.name = hm2.name
+                    WHERE hm2.customer_id = c.id AND v2.visit_type = 'money') as household_money_count
                    FROM visits v 
                    INNER JOIN customers c ON v.customer_id = c.id 
                    WHERE v.visit_type = 'money' 
@@ -19,7 +23,7 @@ header('Content-Disposition: attachment; filename="money_visits_' . date('Y-m-d'
 $output = fopen('php://output', 'w');
 
 // Write CSV header
-fputcsv($output, ['Date', 'Customer Name', 'Phone', 'Address', 'City', 'State', 'Notes']);
+fputcsv($output, ['Date', 'Customer Name', 'Phone', 'Address', 'City', 'State', 'Household Money Visits', 'Notes']);
 
 // Write data rows
 foreach ($money_visits as $visit) {
@@ -30,6 +34,7 @@ foreach ($money_visits as $visit) {
         $visit['address'],
         $visit['city'],
         $visit['state'],
+        $visit['household_money_count'] ?? 0,
         $visit['notes'] ?? ''
     ]);
 }

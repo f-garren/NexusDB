@@ -12,13 +12,29 @@ $total_customers = $stmt->fetch()['total'];
 $stmt = $db->query("SELECT COUNT(*) as total FROM customers WHERE DATE(signup_date) >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)");
 $recent_customers = $stmt->fetch()['total'];
 
-// Total visits today (using DATE() since visit_date is datetime)
-$stmt = $db->query("SELECT COUNT(*) as total FROM visits WHERE DATE(visit_date) = CURDATE()");
-$visits_today = $stmt->fetch()['total'];
+// Food visits today
+$stmt = $db->query("SELECT COUNT(*) as total FROM visits WHERE visit_type = 'food' AND DATE(visit_date) = CURDATE()");
+$food_visits_today = $stmt->fetch()['total'];
 
-// Total visits this month
-$stmt = $db->query("SELECT COUNT(*) as total FROM visits WHERE MONTH(visit_date) = MONTH(CURDATE()) AND YEAR(visit_date) = YEAR(CURDATE())");
-$visits_month = $stmt->fetch()['total'];
+// Food visits this month
+$stmt = $db->query("SELECT COUNT(*) as total FROM visits WHERE visit_type = 'food' AND MONTH(visit_date) = MONTH(CURDATE()) AND YEAR(visit_date) = YEAR(CURDATE())");
+$food_visits_month = $stmt->fetch()['total'];
+
+// Money visits today
+$stmt = $db->query("SELECT COUNT(*) as total FROM visits WHERE visit_type = 'money' AND DATE(visit_date) = CURDATE()");
+$money_visits_today = $stmt->fetch()['total'];
+
+// Money visits this month
+$stmt = $db->query("SELECT COUNT(*) as total FROM visits WHERE visit_type = 'money' AND MONTH(visit_date) = MONTH(CURDATE()) AND YEAR(visit_date) = YEAR(CURDATE())");
+$money_visits_month = $stmt->fetch()['total'];
+
+// Voucher visits today
+$stmt = $db->query("SELECT COUNT(*) as total FROM visits WHERE visit_type = 'voucher' AND DATE(visit_date) = CURDATE()");
+$voucher_visits_today = $stmt->fetch()['total'];
+
+// Voucher visits this month
+$stmt = $db->query("SELECT COUNT(*) as total FROM visits WHERE visit_type = 'voucher' AND MONTH(visit_date) = MONTH(CURDATE()) AND YEAR(visit_date) = YEAR(CURDATE())");
+$voucher_visits_month = $stmt->fetch()['total'];
 
 $page_title = "Dashboard";
 include 'header.php';
@@ -35,7 +51,7 @@ include 'header.php';
             <div class="stat-icon">👥</div>
             <div class="stat-info">
                 <h3><?php echo number_format($total_customers); ?></h3>
-                <p>Total Customers</p>
+                <p>Total <?php echo htmlspecialchars(getCustomerTermPlural('Customers')); ?></p>
             </div>
         </div>
         
@@ -48,18 +64,50 @@ include 'header.php';
         </div>
         
         <div class="stat-card">
-            <div class="stat-icon">📋</div>
+            <div class="stat-icon">🍽️</div>
             <div class="stat-info">
-                <h3><?php echo number_format($visits_today); ?></h3>
-                <p>Visits Today</p>
+                <h3><?php echo number_format($food_visits_today); ?></h3>
+                <p>Food Visits Today</p>
             </div>
         </div>
         
         <div class="stat-card">
-            <div class="stat-icon">📊</div>
+            <div class="stat-icon">🍽️</div>
             <div class="stat-info">
-                <h3><?php echo number_format($visits_month); ?></h3>
-                <p>Visits This Month</p>
+                <h3><?php echo number_format($food_visits_month); ?></h3>
+                <p>Food Visits This Month</p>
+            </div>
+        </div>
+        
+        <div class="stat-card">
+            <div class="stat-icon">💰</div>
+            <div class="stat-info">
+                <h3><?php echo number_format($money_visits_today); ?></h3>
+                <p>Money Visits Today</p>
+            </div>
+        </div>
+        
+        <div class="stat-card">
+            <div class="stat-icon">💰</div>
+            <div class="stat-info">
+                <h3><?php echo number_format($money_visits_month); ?></h3>
+                <p>Money Visits This Month</p>
+            </div>
+        </div>
+        
+        <div class="stat-card">
+            <div class="stat-icon">🎫</div>
+            <div class="stat-info">
+                <h3><?php echo number_format($voucher_visits_today); ?></h3>
+                <p>Voucher Visits Today</p>
+            </div>
+        </div>
+        
+        <div class="stat-card">
+            <div class="stat-icon">🎫</div>
+            <div class="stat-info">
+                <h3><?php echo number_format($voucher_visits_month); ?></h3>
+                <p>Voucher Visits This Month</p>
             </div>
         </div>
     </div>
@@ -67,15 +115,15 @@ include 'header.php';
     <div class="action-buttons">
         <a href="signup.php" class="btn btn-primary btn-large">
             <span class="btn-icon">➕</span>
-            <span>New Customer Signup</span>
+            <span>New <?php echo htmlspecialchars(getCustomerTerm('Customer')); ?> Signup</span>
         </a>
         <a href="customers.php" class="btn btn-secondary btn-large">
             <span class="btn-icon">🔍</span>
-            <span>Search Customers</span>
+            <span>Search <?php echo htmlspecialchars(getCustomerTermPlural('Customers')); ?></span>
         </a>
-        <a href="visits.php" class="btn btn-secondary btn-large">
-            <span class="btn-icon">📋</span>
-            <span>Record Visit</span>
+        <a href="visits_food.php" class="btn btn-secondary btn-large">
+            <span class="btn-icon">🍽️</span>
+            <span>Record Food Visit</span>
         </a>
         <a href="reports.php" class="btn btn-secondary btn-large">
             <span class="btn-icon">📈</span>
@@ -84,7 +132,7 @@ include 'header.php';
     </div>
 
     <div class="recent-section">
-        <h2>Recent Customers</h2>
+        <h2>Recent <?php echo htmlspecialchars(getCustomerTermPlural('Customers')); ?></h2>
         <?php
         $stmt = $db->query("SELECT c.*, 
                            (SELECT COUNT(*) FROM visits WHERE customer_id = c.id) as visit_count
@@ -109,7 +157,7 @@ include 'header.php';
             }
             echo '</tbody></table>';
         } else {
-            echo '<p class="no-data">No customers yet. <a href="signup.php">Add your first customer</a></p>';
+            echo '<p class="no-data">No ' . strtolower(getCustomerTermPlural('customers')) . ' yet. <a href="signup.php">Add ' . htmlspecialchars(getCustomerTerm('Customer')) . '</a></p>';
         }
         ?>
     </div>

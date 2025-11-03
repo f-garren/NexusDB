@@ -31,6 +31,27 @@ $stmt = $db->query("SELECT DATE_FORMAT(visit_date, '%Y-%m') as month, COUNT(*) a
                    GROUP BY DATE_FORMAT(visit_date, '%Y-%m')
                    ORDER BY month");
 $monthly_trends = $stmt->fetchAll();
+
+// Voucher statistics
+$stmt = $db->query("SELECT COUNT(*) as total FROM vouchers");
+$total_vouchers = $stmt->fetch()['total'];
+
+$stmt = $db->query("SELECT COUNT(*) as total FROM vouchers WHERE status = 'active'");
+$active_vouchers = $stmt->fetch()['total'];
+
+$stmt = $db->query("SELECT COUNT(*) as total FROM vouchers WHERE status = 'redeemed'");
+$redeemed_vouchers = $stmt->fetch()['total'];
+
+$stmt = $db->query("SELECT SUM(amount) as total FROM vouchers WHERE status = 'redeemed'");
+$total_redeemed_amount = $stmt->fetch()['total'] ?? 0;
+
+// Recent vouchers
+$stmt = $db->query("SELECT v.*, c.name as customer_name, c.phone 
+                   FROM vouchers v 
+                   INNER JOIN customers c ON v.customer_id = c.id 
+                   ORDER BY v.issued_date DESC 
+                   LIMIT 20");
+$recent_vouchers = $stmt->fetchAll();
 ?>
 
 <div class="container">
@@ -117,6 +138,81 @@ $monthly_trends = $stmt->fetchAll();
             </table>
         <?php else: ?>
             <p class="no-data">No visit data available.</p>
+        <?php endif; ?>
+    </div>
+
+    <div class="report-section">
+        <h2>Voucher Statistics</h2>
+        <div class="stats-grid" style="margin-bottom: 2rem;">
+            <div class="stat-card">
+                <div class="stat-icon">🎫</div>
+                <div class="stat-info">
+                    <h3><?php echo number_format($total_vouchers); ?></h3>
+                    <p>Total Vouchers</p>
+                </div>
+            </div>
+            
+            <div class="stat-card">
+                <div class="stat-icon">✓</div>
+                <div class="stat-info">
+                    <h3><?php echo number_format($active_vouchers); ?></h3>
+                    <p>Active Vouchers</p>
+                </div>
+            </div>
+            
+            <div class="stat-card">
+                <div class="stat-icon">💰</div>
+                <div class="stat-info">
+                    <h3><?php echo number_format($redeemed_vouchers); ?></h3>
+                    <p>Redeemed Vouchers</p>
+                </div>
+            </div>
+            
+            <div class="stat-card">
+                <div class="stat-icon">💵</div>
+                <div class="stat-info">
+                    <h3>$<?php echo number_format($total_redeemed_amount, 2); ?></h3>
+                    <p>Total Redeemed Value</p>
+                </div>
+            </div>
+        </div>
+
+        <h3>Recent Vouchers</h3>
+        <?php if (count($recent_vouchers) > 0): ?>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Voucher Code</th>
+                        <th>Customer</th>
+                        <th>Amount</th>
+                        <th>Issued Date</th>
+                        <th>Status</th>
+                        <th>Redeemed Date</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($recent_vouchers as $voucher): ?>
+                        <tr>
+                            <td><strong><?php echo htmlspecialchars($voucher['voucher_code']); ?></strong></td>
+                            <td><?php echo htmlspecialchars($voucher['customer_name']); ?></td>
+                            <td>$<?php echo number_format($voucher['amount'], 2); ?></td>
+                            <td><?php echo date('M d, Y g:i A', strtotime($voucher['issued_date'])); ?></td>
+                            <td>
+                                <?php if ($voucher['status'] === 'active'): ?>
+                                    <span style="color: green;">Active</span>
+                                <?php elseif ($voucher['status'] === 'redeemed'): ?>
+                                    <span style="color: blue;">Redeemed</span>
+                                <?php else: ?>
+                                    <span style="color: red;">Expired</span>
+                                <?php endif; ?>
+                            </td>
+                            <td><?php echo $voucher['redeemed_date'] ? date('M d, Y g:i A', strtotime($voucher['redeemed_date'])) : '-'; ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        <?php else: ?>
+            <p class="no-data">No vouchers have been issued yet.</p>
         <?php endif; ?>
     </div>
 </div>
