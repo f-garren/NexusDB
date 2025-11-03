@@ -80,6 +80,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_customer'])) {
         $stmt = $db->prepare("DELETE FROM household_members WHERE customer_id = ?");
         $stmt->execute([$customer_id]);
         
+        // Validate that at least one household member exists
+        $household_names = $p['household_names'] ?? [];
+        $valid_members = array_filter($household_names, function($name) {
+            return !empty(trim($name));
+        });
+        
+        if (empty($valid_members)) {
+            throw new Exception("At least one household member is required.");
+        }
+        
+        // Delete existing household members and insert new ones
+        $stmt = $db->prepare("DELETE FROM household_members WHERE customer_id = ?");
+        $stmt->execute([$customer_id]);
+        
         if (!empty($p['household_names'])) {
             foreach ($p['household_names'] as $idx => $name) {
                 if (!empty(trim($name))) {
@@ -384,11 +398,20 @@ include 'header.php';
                 <div class="detail-section">
                     <h2>Household Members</h2>
                     <div id="household_members">
-                        <?php foreach ($household as $idx => $member): ?>
-                            <div class="household-member-item" style="margin-bottom: 1rem; padding: 1rem; border: 1px solid var(--border-color); border-radius: 4px; position: relative;">
-                                <button type="button" class="btn btn-small" onclick="removeHouseholdMember(this)" style="position: absolute; top: 0.5rem; right: 0.5rem; background-color: var(--danger-color); color: white; border: none; padding: 0.25rem 0.5rem; border-radius: 4px; cursor: pointer;" title="Delete this member">
-                                    <ion-icon name="trash"></ion-icon>
-                                </button>
+                        <?php foreach ($household as $idx => $member): 
+                            // Check if this member is the primary customer (name matches customer name)
+                            $is_primary = (strtolower(trim($member['name'])) === strtolower(trim($customer['name'])));
+                        ?>
+                            <div class="household-member-item" data-is-primary="<?php echo $is_primary ? '1' : '0'; ?>" style="margin-bottom: 1rem; padding: 1rem; border: 1px solid var(--border-color); border-radius: 4px; position: relative;">
+                                <?php if (!$is_primary): ?>
+                                    <button type="button" class="btn btn-small" onclick="removeHouseholdMember(this)" style="position: absolute; top: 0.5rem; right: 0.5rem; background-color: var(--danger-color); color: white; border: none; padding: 0.25rem 0.5rem; border-radius: 4px; cursor: pointer;" title="Delete this member">
+                                        <ion-icon name="trash"></ion-icon>
+                                    </button>
+                                <?php else: ?>
+                                    <div style="position: absolute; top: 0.5rem; right: 0.5rem; padding: 0.25rem 0.5rem; font-size: 0.75rem; color: var(--text-color); opacity: 0.7;" title="Primary customer cannot be deleted">
+                                        Primary
+                                    </div>
+                                <?php endif; ?>
                                 <div class="form-row">
                                     <div class="form-group" style="flex: 2;">
                                         <label>Name</label>
@@ -531,8 +554,12 @@ include 'header.php';
                 const container = document.getElementById('household_members');
                 const newItem = document.createElement('div');
                 newItem.className = 'household-member-item';
-                newItem.style.cssText = 'margin-bottom: 1rem; padding: 1rem; border: 1px solid var(--border-color); border-radius: 4px;';
+                newItem.setAttribute('data-is-primary', '0');
+                newItem.style.cssText = 'margin-bottom: 1rem; padding: 1rem; border: 1px solid var(--border-color); border-radius: 4px; position: relative;';
                 newItem.innerHTML = `
+                    <button type="button" class="btn btn-small" onclick="removeHouseholdMember(this)" style="position: absolute; top: 0.5rem; right: 0.5rem; background-color: var(--danger-color); color: white; border: none; padding: 0.25rem 0.5rem; border-radius: 4px; cursor: pointer;" title="Delete this member">
+                        <ion-icon name="trash"></ion-icon>
+                    </button>
                     <div class="form-row">
                         <div class="form-group" style="flex: 2;">
                             <label>Name</label>
@@ -553,8 +580,29 @@ include 'header.php';
             
             // Remove household member
             function removeHouseholdMember(button) {
+                const memberItem = button.closest('.household-member-item');
+                const isPrimary = memberItem.getAttribute('data-is-primary') === '1';
+                
+                // Prevent deletion of primary customer
+                if (isPrimary) {
+                    alert('Cannot delete the primary customer. There must always be at least one household member.');
+                    return;
+                }
+                
+                // Count remaining members (excluding empty new member fields)
+                const allMembers = document.querySelectorAll('.household-member-item');
+                const filledMembers = Array.from(allMembers).filter(item => {
+                    const nameInput = item.querySelector('input[name="household_names[]"]');
+                    return nameInput && nameInput.value.trim() !== '';
+                });
+                
+                // Prevent deletion if this would be the last member
+                if (filledMembers.length <= 1) {
+                    alert('Cannot delete the last household member. There must always be at least one member.');
+                    return;
+                }
+                
                 if (confirm('Are you sure you want to delete this household member?')) {
-                    const memberItem = button.closest('.household-member-item');
                     memberItem.remove();
                 }
             }

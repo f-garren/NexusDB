@@ -12,7 +12,7 @@ define('DB_PASS', 'nexusdb_password');
 
 // Application settings
 define('APP_NAME', 'NexusDB');
-define('APP_VERSION', '0.0.16');
+define('APP_VERSION', '0.0.17');
 
 // Error reporting (set to 0 in production)
 define('DEBUG_MODE', 1);

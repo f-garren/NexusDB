@@ -39,13 +39,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_backup'])) {
         $db_name = DB_NAME;
         
         // Create backup using mysqldump
-        $command = "mysqldump -h {$db_host} -u {$db_user} -p{$db_pass} {$db_name} > " . escapeshellarg($backup_path) . " 2>&1";
+        // Redirect stdout to backup file and stderr to /dev/null separately to prevent warnings from polluting the SQL file
+        $command = "mysqldump -h {$db_host} -u {$db_user} -p{$db_pass} {$db_name} > " . escapeshellarg($backup_path) . " 2>/dev/null";
         exec($command, $output, $return_code);
         
-        if ($return_code === 0 && file_exists($backup_path)) {
+        if ($return_code === 0 && file_exists($backup_path) && filesize($backup_path) > 0) {
             $success = "Backup created successfully: {$backup_filename}";
         } else {
-            $error = "Failed to create backup. " . implode("\n", $output);
+            $error_msg = !empty($output) ? implode("\n", $output) : "Unknown error";
+            $error = "Failed to create backup. " . $error_msg;
         }
     } catch (Exception $e) {
         $error = "Error creating backup: " . $e->getMessage();
@@ -104,6 +106,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['restore_backup'])) {
                 throw new Exception("Failed to read backup file.");
             }
             
+            // Filter out mysqldump/mysql warning lines that may have been written to the file
+            $lines = explode("\n", $sql_content);
+            $clean_lines = [];
+            foreach ($lines as $line) {
+                // Skip lines that are warnings (typically start with "mysqldump:" or "mysql:")
+                if (preg_match('/^(mysqldump|mysql):\s*\[Warning\]/i', $line)) {
+                    continue;
+                }
+                $clean_lines[] = $line;
+            }
+            $sql_content = implode("\n", $clean_lines);
+            
             // Get database credentials
             $db_host = DB_HOST;
             $db_user = DB_USER;
@@ -114,15 +128,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['restore_backup'])) {
             $temp_file = sys_get_temp_dir() . '/' . uniqid('restore_') . '.sql';
             file_put_contents($temp_file, $sql_content);
             
+            // Redirect stderr separately to avoid mixing warnings with output
             $command = "mysql -h {$db_host} -u {$db_user} -p{$db_pass} {$db_name} < " . escapeshellarg($temp_file) . " 2>&1";
             exec($command, $output, $return_code);
             
             unlink($temp_file);
             
+            // Filter out warning messages from output when checking success
+            $real_errors = array_filter($output, function($line) {
+                return !preg_match('/\[Warning\]/', $line);
+            });
+            
             if ($return_code === 0) {
                 $success = "Backup restored successfully from: {$file_name}";
             } else {
-                $error = "Failed to restore backup. " . implode("\n", $output);
+                $error_msg = !empty($real_errors) ? implode("\n", $real_errors) : implode("\n", $output);
+                $error = "Failed to restore backup. " . $error_msg;
             }
         } elseif (isset($_POST['restore_from_list'])) {
             $backup_file = basename($_POST['restore_from_list']);
@@ -130,6 +151,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['restore_backup'])) {
             
             if (file_exists($backup_path) && pathinfo($backup_path, PATHINFO_EXTENSION) === 'sql') {
                 $sql_content = file_get_contents($backup_path);
+                
+                // Filter out mysqldump/mysql warning lines that may have been written to the file
+                $lines = explode("\n", $sql_content);
+                $clean_lines = [];
+                foreach ($lines as $line) {
+                    // Skip lines that are warnings (typically start with "mysqldump:" or "mysql:")
+                    if (preg_match('/^(mysqldump|mysql):\s*\[Warning\]/i', $line)) {
+                        continue;
+                    }
+                    $clean_lines[] = $line;
+                }
+                $sql_content = implode("\n", $clean_lines);
                 
                 // Get database credentials
                 $db_host = DB_HOST;
@@ -140,15 +173,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['restore_backup'])) {
                 $temp_file = sys_get_temp_dir() . '/' . uniqid('restore_') . '.sql';
                 file_put_contents($temp_file, $sql_content);
                 
+                // Redirect stderr separately to avoid mixing warnings with output
                 $command = "mysql -h {$db_host} -u {$db_user} -p{$db_pass} {$db_name} < " . escapeshellarg($temp_file) . " 2>&1";
                 exec($command, $output, $return_code);
                 
                 unlink($temp_file);
                 
+                // Filter out warning messages from output when checking success
+                $real_errors = array_filter($output, function($line) {
+                    return !preg_match('/\[Warning\]/', $line);
+                });
+                
                 if ($return_code === 0) {
                     $success = "Backup restored successfully from: {$backup_file}";
                 } else {
-                    $error = "Failed to restore backup. " . implode("\n", $output);
+                    $error_msg = !empty($real_errors) ? implode("\n", $real_errors) : implode("\n", $output);
+                    $error = "Failed to restore backup. " . $error_msg;
                 }
             } else {
                 $error = "Backup file not found or invalid.";
