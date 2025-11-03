@@ -3,96 +3,112 @@ require_once 'config.php';
 
 $error = '';
 $success = '';
+$show_confirmation = false;
+$potential_duplicates = [];
+$form_data = [];
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+// Handle confirmation submission (final save)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_submit'])) {
     $db = getDB();
+    
+    // Use $_POST data (from hidden form fields)
+    $p = $_POST;
     
     try {
         $db->beginTransaction();
         
-        // Insert customer with automatic signup timestamp
-        $signup_timestamp = date('Y-m-d H:i:s'); // Current system date and time
+        // Insert customer with automatic or manual signup timestamp
+        if (!empty($p['override_signup_date']) && !empty($p['manual_signup_datetime'])) {
+            // Use manual date/time if override is checked
+            $signup_timestamp = date('Y-m-d H:i:s', strtotime($p['manual_signup_datetime']));
+        } else {
+            // Use current system date and time
+            $signup_timestamp = date('Y-m-d H:i:s');
+        }
         
         // Format phone number to +1 (111) 111-1111 format
-        $phone = preg_replace('/[^0-9]/', '', $_POST['phone']); // Remove all non-digits
+        $phone = preg_replace('/[^0-9]/', '', $p['phone']); // Remove all non-digits
         if (strlen($phone) == 10) {
             $phone = '+1 (' . substr($phone, 0, 3) . ') ' . substr($phone, 3, 3) . '-' . substr($phone, 6);
         } elseif (strlen($phone) == 11 && substr($phone, 0, 1) == '1') {
             $phone = '+1 (' . substr($phone, 1, 3) . ') ' . substr($phone, 4, 3) . '-' . substr($phone, 7);
         } else {
-            $phone = $_POST['phone']; // Keep original if can't format
+            $phone = $p['phone']; // Keep original if can't format
         }
         
         $stmt = $db->prepare("INSERT INTO customers (signup_date, name, address, city, state, zip, phone, description_of_need, applied_before) 
                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
         $stmt->execute([
             $signup_timestamp,
-            $_POST['name'],
-            $_POST['address'],
-            $_POST['city'],
-            $_POST['state'],
-            $_POST['zip'],
+            $p['name'],
+            $p['address'],
+            $p['city'],
+            $p['state'],
+            $p['zip'],
             $phone,
-            $_POST['description_of_need'],
-            $_POST['applied_before']
+            $p['description_of_need'] ?? '',
+            $p['applied_before']
         ]);
         
         $customer_id = $db->lastInsertId();
         
         // Handle previous applications
-        if ($_POST['applied_before'] === 'yes' && !empty($_POST['prev_app_date']) && !empty($_POST['prev_app_name'])) {
+        if ($p['applied_before'] === 'yes' && !empty($p['prev_app_date']) && !empty($p['prev_app_name'])) {
             $stmt = $db->prepare("INSERT INTO previous_applications (customer_id, application_date, name_used) VALUES (?, ?, ?)");
-            $stmt->execute([$customer_id, $_POST['prev_app_date'], $_POST['prev_app_name']]);
+            $stmt->execute([$customer_id, $p['prev_app_date'], $p['prev_app_name']]);
         }
         
         // Handle household members (always include the customer as first household member)
         $stmt = $db->prepare("INSERT INTO household_members (customer_id, name, birthdate, relationship) VALUES (?, ?, ?, ?)");
         
         // Always add the customer themselves as "Self" if name is provided
-        if (!empty($_POST['name'])) {
-            $customer_birthdate = !empty($_POST['household_birthdates'][0]) ? $_POST['household_birthdates'][0] : '1900-01-01';
-            $customer_relationship = !empty($_POST['household_relationships'][0]) ? $_POST['household_relationships'][0] : 'Self';
+        if (!empty($p['name'])) {
+            $customer_birthdate = !empty($p['household_birthdates'][0]) ? $p['household_birthdates'][0] : '1900-01-01';
+            $customer_relationship = !empty($p['household_relationships'][0]) ? $p['household_relationships'][0] : 'Self';
             
             $stmt->execute([
                 $customer_id,
-                $_POST['name'],
+                $p['name'],
                 $customer_birthdate,
                 $customer_relationship
             ]);
         }
         
         // Add additional household members (skip first one as it's the customer)
-        if (!empty($_POST['household_names']) && count($_POST['household_names']) > 1) {
-            foreach ($_POST['household_names'] as $index => $name) {
+        if (!empty($p['household_names']) && is_array($p['household_names']) && count($p['household_names']) > 1) {
+            foreach ($p['household_names'] as $index => $name) {
                 if ($index == 0) continue; // Skip first one (customer)
-                if (!empty($name) && !empty($_POST['household_birthdates'][$index]) && !empty($_POST['household_relationships'][$index])) {
+                if (!empty($name) && !empty($p['household_birthdates'][$index]) && !empty($p['household_relationships'][$index])) {
                     $stmt->execute([
                         $customer_id,
                         $name,
-                        $_POST['household_birthdates'][$index],
-                        $_POST['household_relationships'][$index]
+                        $p['household_birthdates'][$index],
+                        $p['household_relationships'][$index]
                     ]);
                 }
             }
         }
         
         // Handle subsidized housing
-        $stmt = $db->prepare("INSERT INTO subsidized_housing (customer_id, in_subsidized_housing, housing_date, name_used) VALUES (?, ?, ?, ?)");
+        $rent_amount = null;
+        if ($p['subsidized_housing'] === 'yes' && !empty($p['rent_amount'])) {
+            $rent_amount = floatval($p['rent_amount']);
+        }
+        $stmt = $db->prepare("INSERT INTO subsidized_housing (customer_id, in_subsidized_housing, rent_amount) VALUES (?, ?, ?)");
         $stmt->execute([
             $customer_id,
-            $_POST['subsidized_housing'],
-            ($_POST['subsidized_housing'] === 'yes' && !empty($_POST['housing_date'])) ? $_POST['housing_date'] : null,
-            ($_POST['subsidized_housing'] === 'yes' && !empty($_POST['housing_name'])) ? $_POST['housing_name'] : null
+            $p['subsidized_housing'],
+            $rent_amount
         ]);
         
         // Handle income
-        $child_support = floatval($_POST['child_support'] ?? 0);
-        $pension = floatval($_POST['pension'] ?? 0);
-        $wages = floatval($_POST['wages'] ?? 0);
-        $ss_ssd_ssi = floatval($_POST['ss_ssd_ssi'] ?? 0);
-        $unemployment = floatval($_POST['unemployment'] ?? 0);
-        $food_stamps = floatval($_POST['food_stamps'] ?? 0);
-        $other = floatval($_POST['other'] ?? 0);
+        $child_support = floatval($p['child_support'] ?? 0);
+        $pension = floatval($p['pension'] ?? 0);
+        $wages = floatval($p['wages'] ?? 0);
+        $ss_ssd_ssi = floatval($p['ss_ssd_ssi'] ?? 0);
+        $unemployment = floatval($p['unemployment'] ?? 0);
+        $food_stamps = floatval($p['food_stamps'] ?? 0);
+        $other = floatval($p['other'] ?? 0);
         $total = $child_support + $pension + $wages + $ss_ssd_ssi + $unemployment + $food_stamps + $other;
         
         $stmt = $db->prepare("INSERT INTO income_sources (customer_id, child_support, pension, wages, ss_ssd_ssi, unemployment, food_stamps, other, other_description, total_household_income) 
@@ -106,17 +122,84 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $unemployment,
             $food_stamps,
             $other,
-            $_POST['other_description'] ?? null,
+            $p['other_description'] ?? null,
             $total
         ]);
         
         $db->commit();
         $success = "Customer successfully registered! <a href='customer_view.php?id=" . $customer_id . "'>View customer details</a>";
+        // Clear form data on success
+        $form_data = [];
+        $show_confirmation = false;
         
     } catch (Exception $e) {
         $db->rollBack();
         $error = "Error: " . $e->getMessage();
     }
+}
+
+// Handle initial form submission - check for duplicates and show confirmation
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['confirm_submit'])) {
+    $db = getDB();
+    
+    // Store form data for confirmation screen
+    $form_data = $_POST;
+    
+    // Check for duplicate customers by name
+    $customer_name = trim($_POST['name'] ?? '');
+    if (!empty($customer_name)) {
+        // Check exact name match
+        $stmt = $db->prepare("SELECT c.*, 
+                             (SELECT GROUP_CONCAT(name) FROM household_members WHERE customer_id = c.id) as household_names
+                             FROM customers c 
+                             WHERE LOWER(c.name) = LOWER(?) 
+                             OR LOWER(c.name) LIKE LOWER(?)
+                             OR LOWER(c.name) LIKE LOWER(?)");
+        $name_like_start = $customer_name . '%';
+        $name_like_end = '%' . $customer_name;
+        $stmt->execute([$customer_name, $name_like_start, $name_like_end]);
+        $exact_matches = $stmt->fetchAll();
+        
+        // Check household members - if new customer or household member name matches existing household members
+        if (!empty($_POST['household_names'])) {
+            foreach ($_POST['household_names'] as $household_name) {
+                if (empty(trim($household_name))) continue;
+                
+                $stmt = $db->prepare("SELECT DISTINCT c.*, hm.name as matched_household_member,
+                                     (SELECT GROUP_CONCAT(name) FROM household_members WHERE customer_id = c.id) as household_names
+                                     FROM customers c
+                                     INNER JOIN household_members hm ON c.id = hm.customer_id
+                                     WHERE LOWER(hm.name) = LOWER(?)");
+                $stmt->execute([trim($household_name)]);
+                $household_matches = $stmt->fetchAll();
+                $potential_duplicates = array_merge($potential_duplicates, $household_matches);
+            }
+        }
+        
+        // Also check if new customer name matches any existing household member
+        $stmt = $db->prepare("SELECT DISTINCT c.*, hm.name as matched_household_member,
+                             (SELECT GROUP_CONCAT(name) FROM household_members WHERE customer_id = c.id) as household_names
+                             FROM customers c
+                             INNER JOIN household_members hm ON c.id = hm.customer_id
+                             WHERE LOWER(hm.name) = LOWER(?)");
+        $stmt->execute([$customer_name]);
+        $customer_as_household_matches = $stmt->fetchAll();
+        $potential_duplicates = array_merge($potential_duplicates, $customer_as_household_matches);
+        
+        // Merge and deduplicate
+        $all_matches = array_merge($exact_matches, $potential_duplicates);
+        $seen_ids = [];
+        $potential_duplicates = [];
+        foreach ($all_matches as $match) {
+            if (!in_array($match['id'], $seen_ids)) {
+                $potential_duplicates[] = $match;
+                $seen_ids[] = $match['id'];
+            }
+        }
+    }
+    
+    // Show confirmation screen
+    $show_confirmation = true;
 }
 
 $page_title = "New Customer Signup";
@@ -137,14 +220,136 @@ include 'header.php';
         <div class="alert alert-success"><?php echo $success; ?></div>
     <?php endif; ?>
 
-    <form method="POST" action="" class="signup-form">
+    <?php if ($show_confirmation): ?>
+        <!-- Confirmation Screen -->
+        <div class="confirmation-screen">
+            <h2>Confirm Customer Registration</h2>
+            <p class="lead">Please review the information below and confirm or make changes.</p>
+            
+            <?php if (count($potential_duplicates) > 0): ?>
+                <div class="alert alert-warning">
+                    <h3>⚠️ Potential Duplicate Customers Found</h3>
+                    <p>The following customers in the system have similar names or household members. Please review to ensure this is not the same person:</p>
+                    <div class="duplicate-list">
+                        <?php foreach ($potential_duplicates as $dup): ?>
+                            <div class="duplicate-item">
+                                <strong><?php echo htmlspecialchars($dup['name']); ?></strong><br>
+                                <small>
+                                    Phone: <?php echo htmlspecialchars($dup['phone']); ?> | 
+                                    Address: <?php echo htmlspecialchars($dup['address']); ?>, <?php echo htmlspecialchars($dup['city']); ?>, <?php echo htmlspecialchars($dup['state']); ?><br>
+                                    Signup: <?php echo date('M d, Y', strtotime($dup['signup_date'])); ?><br>
+                                    <?php if (!empty($dup['household_names'])): ?>
+                                        Household: <?php echo htmlspecialchars($dup['household_names']); ?>
+                                    <?php endif; ?>
+                                </small>
+                                <a href="customer_view.php?id=<?php echo $dup['id']; ?>" target="_blank" class="btn btn-small">View Customer</a>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                    <p><strong>Is this the same person?</strong> If yes, please cancel and use the existing customer record.</p>
+                </div>
+            <?php endif; ?>
+            
+            <!-- Summary of Information -->
+            <div class="confirmation-summary">
+                <h3>Registration Summary</h3>
+                <div class="summary-section">
+                    <h4>Basic Information</h4>
+                    <table class="info-table">
+                        <tr><th>Sign Up Date:</th><td><?php echo isset($form_data['override_signup_date']) && !empty($form_data['manual_signup_datetime']) ? date('F d, Y \a\t g:i A', strtotime($form_data['manual_signup_datetime'])) : date('F d, Y \a\t g:i A'); ?></td></tr>
+                        <tr><th>Name:</th><td><?php echo htmlspecialchars($form_data['name'] ?? ''); ?></td></tr>
+                        <tr><th>Address:</th><td><?php echo htmlspecialchars($form_data['address'] ?? ''); ?></td></tr>
+                        <tr><th>City, State, ZIP:</th><td><?php echo htmlspecialchars(($form_data['city'] ?? '') . ', ' . ($form_data['state'] ?? '') . ' ' . ($form_data['zip'] ?? '')); ?></td></tr>
+                        <tr><th>Phone:</th><td><?php echo htmlspecialchars($form_data['phone'] ?? ''); ?></td></tr>
+                        <?php if (!empty($form_data['description_of_need'])): ?>
+                        <tr><th>Description:</th><td><?php echo nl2br(htmlspecialchars($form_data['description_of_need'])); ?></td></tr>
+                        <?php endif; ?>
+                    </table>
+                </div>
+                
+                <?php if (!empty($form_data['household_names']) && !empty(array_filter($form_data['household_names']))): ?>
+                <div class="summary-section">
+                    <h4>Household Members</h4>
+                    <table class="data-table">
+                        <thead><tr><th>Name</th><th>Birthdate</th><th>Relationship</th></tr></thead>
+                        <tbody>
+                            <?php foreach ($form_data['household_names'] as $idx => $name): ?>
+                                <?php if (!empty(trim($name))): ?>
+                                <tr>
+                                    <td><?php echo htmlspecialchars($name); ?></td>
+                                    <td><?php echo !empty($form_data['household_birthdates'][$idx]) ? date('M d, Y', strtotime($form_data['household_birthdates'][$idx])) : 'N/A'; ?></td>
+                                    <td><?php echo htmlspecialchars($form_data['household_relationships'][$idx] ?? ''); ?></td>
+                                </tr>
+                                <?php endif; ?>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+                <?php endif; ?>
+                
+                <?php 
+                $has_income = (!empty($form_data['child_support']) || !empty($form_data['wages']) || !empty($form_data['ss_ssd_ssi']) || 
+                              !empty($form_data['pension']) || !empty($form_data['unemployment']) || !empty($form_data['food_stamps']) || 
+                              !empty($form_data['other']));
+                if ($has_income): 
+                ?>
+                <div class="summary-section">
+                    <h4>Household Income</h4>
+                    <table class="info-table">
+                        <?php if (!empty($form_data['child_support'])): ?><tr><th>Child Support:</th><td>$<?php echo number_format(floatval($form_data['child_support']), 2); ?></td></tr><?php endif; ?>
+                        <?php if (!empty($form_data['pension'])): ?><tr><th>Pension:</th><td>$<?php echo number_format(floatval($form_data['pension']), 2); ?></td></tr><?php endif; ?>
+                        <?php if (!empty($form_data['wages'])): ?><tr><th>Wages:</th><td>$<?php echo number_format(floatval($form_data['wages']), 2); ?></td></tr><?php endif; ?>
+                        <?php if (!empty($form_data['ss_ssd_ssi'])): ?><tr><th>SS/SSD/SSI:</th><td>$<?php echo number_format(floatval($form_data['ss_ssd_ssi']), 2); ?></td></tr><?php endif; ?>
+                        <?php if (!empty($form_data['unemployment'])): ?><tr><th>Unemployment:</th><td>$<?php echo number_format(floatval($form_data['unemployment']), 2); ?></td></tr><?php endif; ?>
+                        <?php if (!empty($form_data['food_stamps'])): ?><tr><th>Food Stamps:</th><td>$<?php echo number_format(floatval($form_data['food_stamps']), 2); ?></td></tr><?php endif; ?>
+                        <?php if (!empty($form_data['other'])): ?><tr><th>Other:</th><td>$<?php echo number_format(floatval($form_data['other']), 2); ?></td></tr><?php endif; ?>
+                        <tr class="total-row"><th>Total:</th><td><strong>$<?php echo number_format((floatval($form_data['child_support'] ?? 0) + floatval($form_data['pension'] ?? 0) + floatval($form_data['wages'] ?? 0) + floatval($form_data['ss_ssd_ssi'] ?? 0) + floatval($form_data['unemployment'] ?? 0) + floatval($form_data['food_stamps'] ?? 0) + floatval($form_data['other'] ?? 0)), 2); ?></strong></td></tr>
+                    </table>
+                </div>
+                <?php endif; ?>
+            </div>
+            
+            <!-- Hidden form fields to preserve data -->
+            <form method="POST" action="" style="display: none;" id="confirm_form">
+                <?php foreach ($form_data as $key => $value): ?>
+                    <?php if (is_array($value)): ?>
+                        <?php foreach ($value as $sub_key => $sub_value): ?>
+                            <input type="hidden" name="<?php echo htmlspecialchars($key . '[' . $sub_key . ']'); ?>" value="<?php echo htmlspecialchars($sub_value); ?>">
+                        <?php endforeach; ?>
+                    <?php else: ?>
+                        <input type="hidden" name="<?php echo htmlspecialchars($key); ?>" value="<?php echo htmlspecialchars($value); ?>">
+                    <?php endif; ?>
+                <?php endforeach; ?>
+                <input type="hidden" name="confirm_submit" value="1">
+            </form>
+            
+            <div class="form-actions">
+                <button type="button" onclick="document.getElementById('confirm_form').submit();" class="btn btn-primary btn-large">Confirm and Submit</button>
+                <button type="button" onclick="window.location.href='signup.php';" class="btn btn-secondary btn-large">Cancel / Edit Information</button>
+            </div>
+        </div>
+    <?php else: ?>
+        <!-- Regular Signup Form -->
+        <form method="POST" action="" class="signup-form">
         <div class="form-section">
             <h2>Basic Information</h2>
             
             <div class="form-group">
                 <label>Sign Up Date & Time</label>
-                <input type="text" value="<?php echo date('F d, Y \a\t g:i A'); ?>" readonly class="readonly-field">
-                <small class="help-text">Automatically recorded from system time</small>
+                <div class="checkbox-group">
+                    <label style="display: flex; align-items: center; gap: 0.5rem; font-weight: normal;">
+                        <input type="checkbox" id="override_signup_date" name="override_signup_date" value="1">
+                        <span>Override automatic date/time (for backporting entries)</span>
+                    </label>
+                </div>
+                <div id="auto_signup_datetime">
+                    <input type="text" value="<?php echo date('F d, Y \a\t g:i A'); ?>" readonly class="readonly-field">
+                    <small class="help-text">Automatically recorded from system time</small>
+                </div>
+                <div id="manual_signup_datetime" style="display: none;">
+                    <input type="datetime-local" id="manual_signup_datetime_input" name="manual_signup_datetime" value="<?php echo date('Y-m-d\TH:i'); ?>">
+                    <small class="help-text">Enter the actual signup date and time</small>
+                </div>
             </div>
             
             <div class="form-group">
@@ -249,13 +454,9 @@ include 'header.php';
             
             <div id="housing_details" style="display: none;">
                 <div class="form-group">
-                    <label for="housing_date">When?</label>
-                    <input type="date" id="housing_date" name="housing_date">
-                </div>
-                
-                <div class="form-group">
-                    <label for="housing_name">What name was used?</label>
-                    <input type="text" id="housing_name" name="housing_name">
+                    <label for="rent_amount">Amount of Rent</label>
+                    <input type="number" id="rent_amount" name="rent_amount" step="0.01" min="0" placeholder="0.00">
+                    <small class="help-text">Enter monthly rent amount</small>
                 </div>
             </div>
         </div>
@@ -323,6 +524,7 @@ include 'header.php';
             <a href="index.php" class="btn btn-secondary btn-large">Cancel</a>
         </div>
     </form>
+    <?php endif; ?>
 </div>
 
 <script>
@@ -332,6 +534,19 @@ document.getElementById('applied_before').addEventListener('change', function() 
 
 document.getElementById('subsidized_housing').addEventListener('change', function() {
     document.getElementById('housing_details').style.display = this.value === 'yes' ? 'block' : 'none';
+});
+
+// Handle signup date/time override
+document.getElementById('override_signup_date').addEventListener('change', function() {
+    if (this.checked) {
+        document.getElementById('auto_signup_datetime').style.display = 'none';
+        document.getElementById('manual_signup_datetime').style.display = 'block';
+        document.getElementById('manual_signup_datetime_input').required = true;
+    } else {
+        document.getElementById('auto_signup_datetime').style.display = 'block';
+        document.getElementById('manual_signup_datetime').style.display = 'none';
+        document.getElementById('manual_signup_datetime_input').required = false;
+    }
 });
 
 function addHouseholdMember() {
@@ -380,21 +595,78 @@ document.getElementById('name').addEventListener('input', function() {
 });
 
 // Format phone number as user types
-document.getElementById('phone').addEventListener('input', function(e) {
-    let value = e.target.value.replace(/[^0-9]/g, '');
-    if (value.length > 0 && value.length <= 11) {
-        if (value.length <= 3) {
-            e.target.value = '+1 (' + value;
-        } else if (value.length <= 6) {
-            e.target.value = '+1 (' + value.substring(0, 3) + ') ' + value.substring(3);
-        } else if (value.length <= 10) {
-            e.target.value = '+1 (' + value.substring(0, 3) + ') ' + value.substring(3, 6) + '-' + value.substring(6);
-        } else {
-            let formatted = '+1 (' + value.substring(value.length - 10, value.length - 7) + ') ' + value.substring(value.length - 7, value.length - 4) + '-' + value.substring(value.length - 4);
-            e.target.value = formatted;
+(function() {
+    let phoneInput = document.getElementById('phone');
+    let isFormatting = false;
+    
+    phoneInput.addEventListener('input', function(e) {
+        if (isFormatting) return;
+        
+        let input = e.target;
+        let value = input.value.replace(/[^0-9]/g, '');
+        
+        // Don't format if user is deleting or if field is empty
+        if (value.length === 0) {
+            input.value = '';
+            return;
         }
-    }
-});
+        
+        // Limit to 11 digits (1 + 10 digit number)
+        if (value.length > 11) {
+            value = value.substring(0, 11);
+        }
+        
+        // Remove leading 1 if present (we always add +1)
+        if (value.length === 11 && value[0] === '1') {
+            value = value.substring(1);
+        }
+        
+        // Format based on length
+        let formatted = '';
+        if (value.length === 0) {
+            formatted = '';
+        } else if (value.length <= 3) {
+            formatted = '+1 (' + value;
+        } else if (value.length <= 6) {
+            formatted = '+1 (' + value.substring(0, 3) + ') ' + value.substring(3);
+        } else {
+            formatted = '+1 (' + value.substring(0, 3) + ') ' + value.substring(3, 6) + '-' + value.substring(6, 10);
+        }
+        
+        // Only update if formatted value is different
+        if (input.value !== formatted) {
+            isFormatting = true;
+            let cursorPos = input.selectionStart;
+            let oldValue = input.value;
+            let digitsBeforeCursor = oldValue.substring(0, cursorPos).replace(/[^0-9]/g, '').length;
+            
+            input.value = formatted;
+            
+            // Try to maintain cursor position intelligently
+            let newCursorPos = formatted.length;
+            let digitCount = 0;
+            for (let i = 0; i < formatted.length; i++) {
+                if (/[0-9]/.test(formatted[i])) {
+                    digitCount++;
+                    if (digitCount > digitsBeforeCursor) {
+                        newCursorPos = i + 1;
+                        break;
+                    }
+                }
+            }
+            
+            input.setSelectionRange(newCursorPos, newCursorPos);
+            isFormatting = false;
+        }
+    });
+    
+    // Handle paste events
+    phoneInput.addEventListener('paste', function(e) {
+        setTimeout(function() {
+            phoneInput.dispatchEvent(new Event('input'));
+        }, 0);
+    });
+})();
 </script>
 
 <?php include 'footer.php'; ?>

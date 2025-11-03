@@ -54,8 +54,7 @@ CREATE TABLE IF NOT EXISTS `subsidized_housing` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `customer_id` int(11) NOT NULL,
   `in_subsidized_housing` enum('yes','no') NOT NULL DEFAULT 'no',
-  `housing_date` date DEFAULT NULL,
-  `name_used` varchar(255) DEFAULT NULL,
+  `rent_amount` decimal(10,2) DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `customer_id` (`customer_id`),
@@ -87,12 +86,34 @@ CREATE TABLE IF NOT EXISTS `visits` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `customer_id` int(11) NOT NULL,
   `visit_date` datetime NOT NULL,
+  `visit_type` enum('food','money','voucher') NOT NULL DEFAULT 'food',
   `notes` text,
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `customer_id` (`customer_id`),
   KEY `visit_date` (`visit_date`),
+  KEY `visit_type` (`visit_type`),
   CONSTRAINT `visits_customer_fk` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Vouchers table
+CREATE TABLE IF NOT EXISTS `vouchers` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `voucher_code` varchar(50) NOT NULL UNIQUE,
+  `customer_id` int(11) NOT NULL,
+  `amount` decimal(10,2) NOT NULL,
+  `issued_date` datetime NOT NULL,
+  `expiry_date` date DEFAULT NULL,
+  `status` enum('active','redeemed','expired') NOT NULL DEFAULT 'active',
+  `redeemed_date` datetime DEFAULT NULL,
+  `redeemed_by` varchar(255) DEFAULT NULL,
+  `notes` text,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `customer_id` (`customer_id`),
+  KEY `voucher_code` (`voucher_code`),
+  KEY `status` (`status`),
+  CONSTRAINT `vouchers_customer_fk` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Settings table for visit limits and other configuration

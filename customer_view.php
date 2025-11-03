@@ -38,6 +38,14 @@ $stmt = $db->prepare("SELECT * FROM visits WHERE customer_id = ? ORDER BY visit_
 $stmt->execute([$customer_id]);
 $visits = $stmt->fetchAll();
 
+// Count visits by type
+$stmt = $db->prepare("SELECT visit_type, COUNT(*) as count FROM visits WHERE customer_id = ? GROUP BY visit_type");
+$stmt->execute([$customer_id]);
+$visit_counts = [];
+while ($row = $stmt->fetch()) {
+    $visit_counts[$row['visit_type']] = $row['count'];
+}
+
 // Get visit limits
 $visits_per_month = getSetting('visits_per_month_limit', 2);
 $visits_per_year = getSetting('visits_per_year_limit', 12);
@@ -195,16 +203,10 @@ include 'header.php';
                     <th>In Subsidized Housing:</th>
                     <td>Yes</td>
                 </tr>
-                <?php if ($housing['housing_date']): ?>
+                <?php if ($housing['rent_amount']): ?>
                 <tr>
-                    <th>Date:</th>
-                    <td><?php echo date('M d, Y', strtotime($housing['housing_date'])); ?></td>
-                </tr>
-                <?php endif; ?>
-                <?php if ($housing['name_used']): ?>
-                <tr>
-                    <th>Name Used:</th>
-                    <td><?php echo htmlspecialchars($housing['name_used']); ?></td>
+                    <th>Amount of Rent:</th>
+                    <td>$<?php echo number_format($housing['rent_amount'], 2); ?></td>
                 </tr>
                 <?php endif; ?>
             </table>
@@ -260,10 +262,21 @@ include 'header.php';
         <div class="detail-section">
             <h2>Visit History</h2>
             <?php if (count($visits) > 0): ?>
+                <div style="margin-bottom: 1rem;">
+                    <strong>Visit Summary:</strong>
+                    <?php 
+                    $visit_summary = [];
+                    if (!empty($visit_counts['food'])) $visit_summary[] = "Food: " . $visit_counts['food'];
+                    if (!empty($visit_counts['money'])) $visit_summary[] = "Money: " . $visit_counts['money'];
+                    if (!empty($visit_counts['voucher'])) $visit_summary[] = "Vouchers: " . $visit_counts['voucher'];
+                    echo !empty($visit_summary) ? implode(" | ", $visit_summary) : "No visits";
+                    ?>
+                </div>
                 <table class="data-table">
                     <thead>
                         <tr>
                             <th>Date</th>
+                            <th>Type</th>
                             <th>Notes</th>
                         </tr>
                     </thead>
@@ -271,6 +284,7 @@ include 'header.php';
                         <?php foreach ($visits as $visit): ?>
                             <tr>
                                 <td><?php echo date('M d, Y \a\t g:i A', strtotime($visit['visit_date'])); ?></td>
+                                <td><?php echo ucfirst($visit['visit_type'] ?? 'food'); ?></td>
                                 <td><?php echo nl2br(htmlspecialchars($visit['notes'] ?? '')); ?></td>
                             </tr>
                         <?php endforeach; ?>

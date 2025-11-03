@@ -6,6 +6,7 @@ $success = '';
 $mode = getSetting('settings_mode', 'simple');
 $current_timezone = getSetting('timezone', 'America/Boise');
 $organization_name = getSetting('organization_name', 'NexusDB');
+$shop_name = getSetting('shop_name', 'Partner Store');
 
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -140,6 +141,12 @@ include 'header.php';
                     <label for="organization_name">Organization Name</label>
                     <input type="text" id="organization_name" name="organization_name" value="<?php echo htmlspecialchars($organization_name); ?>" placeholder="Enter organization name">
                     <small class="help-text">This name will be displayed throughout the application</small>
+                </div>
+                
+                <div class="form-group">
+                    <label for="shop_name">Shop/Store Name (for Voucher Redemption)</label>
+                    <input type="text" id="shop_name" name="shop_name" value="<?php echo htmlspecialchars($shop_name); ?>" placeholder="Enter shop/store name">
+                    <small class="help-text">Name of the shop where vouchers can be redeemed</small>
                 </div>
                 
                 <div class="form-section">

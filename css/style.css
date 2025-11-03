@@ -352,6 +352,15 @@ input.readonly-field {
     color: var(--text-muted);
 }
 
+.checkbox-group {
+    margin-bottom: 0.75rem;
+}
+
+.checkbox-group input[type="checkbox"] {
+    width: auto;
+    margin: 0;
+}
+
 textarea {
     resize: vertical;
     min-height: 100px;
@@ -431,6 +440,149 @@ textarea {
 
 .customer-result:last-child {
     border-bottom: none;
+}
+
+/* Remove border under customer search field */
+.visit-form .form-group:first-of-type {
+    border-bottom: none !important;
+    padding-bottom: 0;
+    margin-bottom: 1rem;
+}
+
+/* Confirmation Screen */
+.confirmation-screen {
+    background: var(--white);
+    padding: 2rem;
+    border-radius: 8px;
+    box-shadow: var(--shadow);
+    margin-bottom: 2rem;
+}
+
+.confirmation-screen h2 {
+    color: var(--primary-color);
+    margin-bottom: 1rem;
+}
+
+.confirmation-summary {
+    margin-top: 2rem;
+}
+
+.confirmation-summary h3 {
+    color: var(--primary-color);
+    margin-bottom: 1.5rem;
+    font-size: 1.3rem;
+}
+
+.summary-section {
+    margin-bottom: 2rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.summary-section:last-child {
+    border-bottom: none;
+}
+
+.summary-section h4 {
+    color: var(--primary-color);
+    margin-bottom: 1rem;
+    font-size: 1.1rem;
+}
+
+.duplicate-list {
+    margin-top: 1rem;
+}
+
+.duplicate-item {
+    background: var(--light-bg);
+    padding: 1rem;
+    border-radius: 4px;
+    margin-bottom: 1rem;
+    border-left: 4px solid var(--warning-color);
+}
+
+.duplicate-item strong {
+    display: block;
+    margin-bottom: 0.5rem;
+    color: var(--primary-color);
+}
+
+.duplicate-item small {
+    display: block;
+    color: var(--text-muted);
+    margin-bottom: 0.5rem;
+}
+
+/* Filter Forms */
+.filter-form {
+    margin-bottom: 2rem;
+}
+
+.filter-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1rem;
+    align-items: end;
+}
+
+.filter-group {
+    display: flex;
+    flex-direction: column;
+}
+
+.filter-group label {
+    margin-bottom: 0.5rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+.filter-group select,
+.filter-group input[type="date"] {
+    padding: 0.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+}
+
+.filter-group div {
+    display: flex;
+    gap: 0.5rem;
+}
+
+/* Confirmation Screen */
+.confirmation-screen {
+    background: white;
+    padding: 2rem;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    margin-bottom: 2rem;
+}
+
+.confirmation-summary {
+    margin: 1.5rem 0;
+}
+
+/* Voucher Info Card */
+.voucher-info-card {
+    background: white;
+    padding: 2rem;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    margin-top: 2rem;
+}
+
+.voucher-info-card h2 {
+    margin-top: 0;
+    color: var(--primary-color);
+}
+
+/* Alert Styles */
+.alert-warning {
+    background-color: #fff3cd;
+    border: 1px solid #ffc107;
+    color: #856404;
+    padding: 1rem;
+    border-radius: 4px;
+    margin: 1rem 0;
 }
 
 .no-results {

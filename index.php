@@ -12,8 +12,8 @@ $total_customers = $stmt->fetch()['total'];
 $stmt = $db->query("SELECT COUNT(*) as total FROM customers WHERE DATE(signup_date) >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)");
 $recent_customers = $stmt->fetch()['total'];
 
-// Total visits today
-$stmt = $db->query("SELECT COUNT(*) as total FROM visits WHERE visit_date = CURDATE()");
+// Total visits today (using DATE() since visit_date is datetime)
+$stmt = $db->query("SELECT COUNT(*) as total FROM visits WHERE DATE(visit_date) = CURDATE()");
 $visits_today = $stmt->fetch()['total'];
 
 // Total visits this month
@@ -48,7 +48,7 @@ include 'header.php';
         </div>
         
         <div class="stat-card">
-            <div class="stat-icon">✓</div>
+            <div class="stat-icon">📋</div>
             <div class="stat-info">
                 <h3><?php echo number_format($visits_today); ?></h3>
                 <p>Visits Today</p>

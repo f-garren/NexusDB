@@ -17,6 +17,8 @@
                 <li><a href="signup.php">New Signup</a></li>
                 <li><a href="customers.php">Customers</a></li>
                 <li><a href="visits.php">Visits</a></li>
+                <li><a href="vouchers.php">Vouchers</a></li>
+                <li><a href="voucher_redemption.php">Redeem</a></li>
                 <li><a href="reports.php">Reports</a></li>
                 <li><a href="settings.php">Settings</a></li>
             </ul>

@@ -37,6 +37,9 @@ $monthly_trends = $stmt->fetchAll();
     <div class="page-header">
         <h1>Reports & Statistics</h1>
         <p class="lead">View insights and analytics</p>
+        <div style="margin-top: 1rem;">
+            <a href="money_export.php" class="btn btn-primary">Export Money Visits to CSV</a>
+        </div>
     </div>
 
     <div class="stats-grid">
