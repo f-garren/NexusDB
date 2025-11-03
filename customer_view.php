@@ -976,6 +976,14 @@ include 'header.php';
 .action-dropdown button {
     cursor: pointer;
     border: none;
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+    vertical-align: baseline;
+    margin: 0;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
 }
 
 .action-dropdown button ion-icon {
