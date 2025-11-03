@@ -13,8 +13,177 @@ $money_limit = intval(getSetting('money_distribution_limit', 3));
 $theme_color = getSetting('theme_color', '#2c5aa0');
 $voucher_prefix = getSetting('voucher_prefix', 'VCH-');
 
-// Handle form submission
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+// Handle backup and restore operations FIRST (before main form submission)
+$BACKUP_DIR = dirname(__FILE__) . '/backups';
+
+// Create backup directory if it doesn't exist
+if (!file_exists($BACKUP_DIR)) {
+    mkdir($BACKUP_DIR, 0755, true);
+}
+
+// Handle backup creation
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_backup'])) {
+    try {
+        $db = getDB();
+        $timestamp = date('Y-m-d_His');
+        $version = defined('APP_VERSION') ? APP_VERSION : 'unknown';
+        // Format version for filename (replace dots with underscores)
+        $version_safe = str_replace('.', '_', $version);
+        $backup_filename = "nexusdb_backup_v{$version_safe}_{$timestamp}.sql";
+        $backup_path = $BACKUP_DIR . '/' . $backup_filename;
+        
+        // Get database credentials
+        $db_host = DB_HOST;
+        $db_user = DB_USER;
+        $db_pass = DB_PASS;
+        $db_name = DB_NAME;
+        
+        // Create backup using mysqldump
+        $command = "mysqldump -h {$db_host} -u {$db_user} -p{$db_pass} {$db_name} > " . escapeshellarg($backup_path) . " 2>&1";
+        exec($command, $output, $return_code);
+        
+        if ($return_code === 0 && file_exists($backup_path)) {
+            $success = "Backup created successfully: {$backup_filename}";
+        } else {
+            $error = "Failed to create backup. " . implode("\n", $output);
+        }
+    } catch (Exception $e) {
+        $error = "Error creating backup: " . $e->getMessage();
+    }
+}
+
+// Handle backup download (this exits, so it must be before form processing)
+if (isset($_GET['download_backup'])) {
+    $backup_file = basename($_GET['download_backup']);
+    $backup_path = $BACKUP_DIR . '/' . $backup_file;
+    
+    if (file_exists($backup_path) && pathinfo($backup_path, PATHINFO_EXTENSION) === 'sql') {
+        header('Content-Type: application/sql');
+        header('Content-Disposition: attachment; filename="' . $backup_file . '"');
+        header('Content-Length: ' . filesize($backup_path));
+        readfile($backup_path);
+        exit;
+    } else {
+        $error = "Backup file not found or invalid.";
+    }
+}
+
+// Handle backup deletion
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_backup'])) {
+    $backup_file = basename($_POST['delete_backup']);
+    $backup_path = $BACKUP_DIR . '/' . $backup_file;
+    
+    if (file_exists($backup_path) && pathinfo($backup_path, PATHINFO_EXTENSION) === 'sql') {
+        if (unlink($backup_path)) {
+            $success = "Backup deleted successfully.";
+        } else {
+            $error = "Failed to delete backup file.";
+        }
+    } else {
+        $error = "Backup file not found or invalid.";
+    }
+}
+
+// Handle backup restore
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['restore_backup'])) {
+    try {
+        $db = getDB();
+        
+        if (isset($_FILES['restore_file']) && $_FILES['restore_file']['error'] === UPLOAD_ERR_OK) {
+            $uploaded_file = $_FILES['restore_file']['tmp_name'];
+            $file_name = $_FILES['restore_file']['name'];
+            
+            // Validate file type
+            if (pathinfo($file_name, PATHINFO_EXTENSION) !== 'sql') {
+                throw new Exception("Invalid file type. Only .sql files are allowed.");
+            }
+            
+            // Read and validate SQL file
+            $sql_content = file_get_contents($uploaded_file);
+            if ($sql_content === false) {
+                throw new Exception("Failed to read backup file.");
+            }
+            
+            // Get database credentials
+            $db_host = DB_HOST;
+            $db_user = DB_USER;
+            $db_pass = DB_PASS;
+            $db_name = DB_NAME;
+            
+            // Execute SQL file
+            $temp_file = sys_get_temp_dir() . '/' . uniqid('restore_') . '.sql';
+            file_put_contents($temp_file, $sql_content);
+            
+            $command = "mysql -h {$db_host} -u {$db_user} -p{$db_pass} {$db_name} < " . escapeshellarg($temp_file) . " 2>&1";
+            exec($command, $output, $return_code);
+            
+            unlink($temp_file);
+            
+            if ($return_code === 0) {
+                $success = "Backup restored successfully from: {$file_name}";
+            } else {
+                $error = "Failed to restore backup. " . implode("\n", $output);
+            }
+        } elseif (isset($_POST['restore_from_list'])) {
+            $backup_file = basename($_POST['restore_from_list']);
+            $backup_path = $BACKUP_DIR . '/' . $backup_file;
+            
+            if (file_exists($backup_path) && pathinfo($backup_path, PATHINFO_EXTENSION) === 'sql') {
+                $sql_content = file_get_contents($backup_path);
+                
+                // Get database credentials
+                $db_host = DB_HOST;
+                $db_user = DB_USER;
+                $db_pass = DB_PASS;
+                $db_name = DB_NAME;
+                
+                $temp_file = sys_get_temp_dir() . '/' . uniqid('restore_') . '.sql';
+                file_put_contents($temp_file, $sql_content);
+                
+                $command = "mysql -h {$db_host} -u {$db_user} -p{$db_pass} {$db_name} < " . escapeshellarg($temp_file) . " 2>&1";
+                exec($command, $output, $return_code);
+                
+                unlink($temp_file);
+                
+                if ($return_code === 0) {
+                    $success = "Backup restored successfully from: {$backup_file}";
+                } else {
+                    $error = "Failed to restore backup. " . implode("\n", $output);
+                }
+            } else {
+                $error = "Backup file not found or invalid.";
+            }
+        } else {
+            $error = "Please select a backup file to restore.";
+        }
+    } catch (Exception $e) {
+        $error = "Error restoring backup: " . $e->getMessage();
+    }
+}
+
+// Get list of backup files
+$backup_files = [];
+if (is_dir($BACKUP_DIR)) {
+    $files = scandir($BACKUP_DIR);
+    foreach ($files as $file) {
+        if ($file !== '.' && $file !== '..' && pathinfo($file, PATHINFO_EXTENSION) === 'sql') {
+            $file_path = $BACKUP_DIR . '/' . $file;
+            $backup_files[] = [
+                'name' => $file,
+                'path' => $file_path,
+                'size' => filesize($file_path),
+                'date' => filemtime($file_path)
+            ];
+        }
+    }
+    // Sort by date, newest first
+    usort($backup_files, function($a, $b) {
+        return $b['date'] - $a['date'];
+    });
+}
+
+// Handle form submission (only if not a backup operation)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['create_backup']) && !isset($_POST['delete_backup']) && !isset($_POST['restore_backup'])) {
     try {
         $db = getDB();
         
@@ -231,6 +400,9 @@ include 'header.php';
                     <div class="settings-category" data-category="security">
                         <h3><ion-icon name="shield-checkmark"></ion-icon> Security</h3>
                     </div>
+                    <div class="settings-category" data-category="backup">
+                        <h3><ion-icon name="archive"></ion-icon> Backup & Restore</h3>
+                    </div>
                 </div>
                 
                 <div class="settings-content">
@@ -414,6 +586,86 @@ include 'header.php';
                             <label>Current IP Address</label>
                             <input type="text" value="<?php echo htmlspecialchars($_SERVER['REMOTE_ADDR'] ?? 'Unknown'); ?>" readonly class="readonly-field">
                             <small class="help-text">Your current IP address. Add this to the allowed IPs list if you want to ensure continued access.</small>
+                        </div>
+                    </div>
+                    
+                    <!-- Backup & Restore Settings -->
+                    <div class="category-content" id="category-backup">
+                        <h2>Backup & Restore</h2>
+                        
+                        <div class="alert alert-warning" style="margin-bottom: 1.5rem;">
+                            <ion-icon name="warning"></ion-icon>
+                            <strong>Warning:</strong> Restoring a backup will replace all current data in the database. 
+                            Make sure to create a backup before restoring if needed.
+                        </div>
+                        
+                        <div class="form-section">
+                            <h3>Create Backup</h3>
+                            <p>Create a complete backup of your database. Backups are saved locally and can be downloaded or restored later.</p>
+                            <form method="POST" action="" style="display: inline;">
+                                <button type="submit" name="create_backup" class="btn btn-primary" onclick="return confirm('Create a new backup of the database?');">
+                                    <ion-icon name="download"></ion-icon> Create Backup Now
+                                </button>
+                            </form>
+                        </div>
+                        
+                        <div class="form-section" style="margin-top: 2rem;">
+                            <h3>Existing Backups</h3>
+                            <?php if (empty($backup_files)): ?>
+                                <p class="no-data">No backups found. Create your first backup above.</p>
+                            <?php else: ?>
+                                <table class="data-table" style="margin-top: 1rem;">
+                                    <thead>
+                                        <tr>
+                                            <th>Backup File</th>
+                                            <th>Date Created</th>
+                                            <th>Size</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach ($backup_files as $backup): ?>
+                                            <tr>
+                                                <td><?php echo htmlspecialchars($backup['name']); ?></td>
+                                                <td><?php echo date('Y-m-d H:i:s', $backup['date']); ?></td>
+                                                <td><?php echo number_format($backup['size'] / 1024, 2); ?> KB</td>
+                                                <td>
+                                                    <a href="?download_backup=<?php echo urlencode($backup['name']); ?>" class="btn btn-small btn-primary">
+                                                        <ion-icon name="download-outline"></ion-icon> Download
+                                                    </a>
+                                                    <form method="POST" action="" style="display: inline;" onsubmit="return confirm('Are you sure you want to restore this backup? This will replace all current data.');">
+                                                        <input type="hidden" name="restore_from_list" value="<?php echo htmlspecialchars($backup['name']); ?>">
+                                                        <button type="submit" name="restore_backup" class="btn btn-small" style="background-color: var(--primary-color); color: white;">
+                                                            <ion-icon name="refresh"></ion-icon> Restore
+                                                        </button>
+                                                    </form>
+                                                    <form method="POST" action="" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete this backup?');">
+                                                        <input type="hidden" name="delete_backup" value="<?php echo htmlspecialchars($backup['name']); ?>">
+                                                        <button type="submit" class="btn btn-small" style="background-color: var(--danger-color); color: white;">
+                                                            <ion-icon name="trash"></ion-icon> Delete
+                                                        </button>
+                                                    </form>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            <?php endif; ?>
+                        </div>
+                        
+                        <div class="form-section" style="margin-top: 2rem;">
+                            <h3>Restore from Upload</h3>
+                            <p>Upload a .sql backup file to restore your database.</p>
+                            <form method="POST" action="" enctype="multipart/form-data" onsubmit="return confirm('Are you sure you want to restore this backup? This will replace all current data.');">
+                                <div class="form-group">
+                                    <label for="restore_file">Select Backup File (.sql)</label>
+                                    <input type="file" id="restore_file" name="restore_file" accept=".sql" required>
+                                    <small class="help-text">Select a .sql backup file to restore</small>
+                                </div>
+                                <button type="submit" name="restore_backup" class="btn btn-primary">
+                                    <ion-icon name="cloud-upload"></ion-icon> Upload and Restore
+                                </button>
+                            </form>
                         </div>
                     </div>
                 </div>
