@@ -64,23 +64,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_customer'])) {
             }
         }
         
-        // Delete existing previous applications and insert new ones
-        $stmt = $db->prepare("DELETE FROM previous_applications WHERE customer_id = ?");
-        $stmt->execute([$customer_id]);
-        
-        if (!empty($p['prev_app_dates'])) {
-            foreach ($p['prev_app_dates'] as $idx => $date) {
-                if (!empty(trim($date)) || !empty(trim($p['prev_app_names'][$idx] ?? ''))) {
-                    $stmt = $db->prepare("INSERT INTO previous_applications (customer_id, application_date, name_used) VALUES (?, ?, ?)");
-                    $app_date = !empty($date) ? date('Y-m-d', strtotime($date)) : null;
-                    $stmt->execute([
-                        $customer_id,
-                        $app_date,
-                        $p['prev_app_names'][$idx] ?? null
-                    ]);
-                }
-            }
-        }
+        // Do not modify previous applications when editing (only set during signup)
+        // Previous applications remain unchanged in edit mode
         
         // Update or create subsidized housing
         $stmt = $db->prepare("DELETE FROM subsidized_housing WHERE customer_id = ?");
@@ -228,11 +213,29 @@ include 'header.php';
                 <a href="customer_view.php?id=<?php echo $customer_id; ?>&edit=1" class="btn btn-primary">
                     <ion-icon name="create"></ion-icon> Edit <?php echo htmlspecialchars(getCustomerTerm('Customer')); ?>
                 </a>
-                <a href="visits.php?customer_id=<?php echo $customer_id; ?>" class="btn btn-primary">Record Visit</a>
+                <div class="action-dropdown" style="display: inline-block; position: relative;">
+                    <button class="btn btn-primary" style="position: relative;">Record Visit <ion-icon name="chevron-down" style="font-size: 0.8rem; vertical-align: middle;"></ion-icon></button>
+                    <ul class="action-dropdown-menu" style="display: none; position: absolute; top: 100%; left: 0; background-color: var(--white); box-shadow: var(--shadow-lg); border-radius: 4px; min-width: 160px; padding: 0.5rem 0; margin-top: 0.25rem; list-style: none; z-index: 1000; white-space: nowrap;">
+                        <li><a href="visits_food.php?customer_id=<?php echo $customer_id; ?>" style="display: block; padding: 0.5rem 1rem; color: var(--text-color); text-decoration: none;">Food Visit</a></li>
+                        <li><a href="visits_money.php?customer_id=<?php echo $customer_id; ?>" style="display: block; padding: 0.5rem 1rem; color: var(--text-color); text-decoration: none;">Money Visit</a></li>
+                        <li><a href="visits_voucher.php?customer_id=<?php echo $customer_id; ?>" style="display: block; padding: 0.5rem 1rem; color: var(--text-color); text-decoration: none;">Voucher Visit</a></li>
+                    </ul>
+                </div>
+                <a href="#visit-history" class="btn btn-secondary">
+                    <ion-icon name="arrow-down"></ion-icon> Jump to Visit History
+                </a>
             <?php else: ?>
                 <a href="customer_view.php?id=<?php echo $customer_id; ?>" class="btn btn-secondary">
                     <ion-icon name="eye"></ion-icon> View Mode
                 </a>
+                <div class="action-dropdown" style="display: inline-block; position: relative;">
+                    <button class="btn btn-primary" style="position: relative;">Record Visit <ion-icon name="chevron-down" style="font-size: 0.8rem; vertical-align: middle;"></ion-icon></button>
+                    <ul class="action-dropdown-menu" style="display: none; position: absolute; top: 100%; left: 0; background-color: var(--white); box-shadow: var(--shadow-lg); border-radius: 4px; min-width: 160px; padding: 0.5rem 0; margin-top: 0.25rem; list-style: none; z-index: 1000; white-space: nowrap;">
+                        <li><a href="visits_food.php?customer_id=<?php echo $customer_id; ?>" style="display: block; padding: 0.5rem 1rem; color: var(--text-color); text-decoration: none;">Food Visit</a></li>
+                        <li><a href="visits_money.php?customer_id=<?php echo $customer_id; ?>" style="display: block; padding: 0.5rem 1rem; color: var(--text-color); text-decoration: none;">Money Visit</a></li>
+                        <li><a href="visits_voucher.php?customer_id=<?php echo $customer_id; ?>" style="display: block; padding: 0.5rem 1rem; color: var(--text-color); text-decoration: none;">Voucher Visit</a></li>
+                    </ul>
+                </div>
             <?php endif; ?>
         </div>
         <h1><?php echo htmlspecialchars($customer['name']); ?></h1>
@@ -351,7 +354,10 @@ include 'header.php';
                     <h2>Household Members</h2>
                     <div id="household_members">
                         <?php foreach ($household as $idx => $member): ?>
-                            <div class="household-member-item" style="margin-bottom: 1rem; padding: 1rem; border: 1px solid var(--border-color); border-radius: 4px;">
+                            <div class="household-member-item" style="margin-bottom: 1rem; padding: 1rem; border: 1px solid var(--border-color); border-radius: 4px; position: relative;">
+                                <button type="button" class="btn btn-small" onclick="removeHouseholdMember(this)" style="position: absolute; top: 0.5rem; right: 0.5rem; background-color: var(--danger-color); color: white; border: none; padding: 0.25rem 0.5rem; border-radius: 4px; cursor: pointer;" title="Delete this member">
+                                    <ion-icon name="trash"></ion-icon>
+                                </button>
                                 <div class="form-row">
                                     <div class="form-group" style="flex: 2;">
                                         <label>Name</label>
@@ -388,40 +394,6 @@ include 'header.php';
                     <button type="button" class="btn btn-secondary btn-small" onclick="addHouseholdMember()">Add Another Member</button>
                 </div>
 
-                <?php if ($customer['applied_before'] === 'yes' || count($prev_apps) > 0): ?>
-                <div class="detail-section">
-                    <h2>Previous Applications</h2>
-                    <div id="prev_apps">
-                        <?php foreach ($prev_apps as $idx => $app): ?>
-                            <div class="prev-app-item" style="margin-bottom: 1rem; padding: 1rem; border: 1px solid var(--border-color); border-radius: 4px;">
-                                <div class="form-row">
-                                    <div class="form-group">
-                                        <label>Application Date</label>
-                                        <input type="date" name="prev_app_dates[]" value="<?php echo $app['application_date'] ? date('Y-m-d', strtotime($app['application_date'])) : ''; ?>">
-                                    </div>
-                                    <div class="form-group" style="flex: 2;">
-                                        <label>Name Used</label>
-                                        <input type="text" name="prev_app_names[]" value="<?php echo htmlspecialchars($app['name_used'] ?? ''); ?>">
-                                    </div>
-                                </div>
-                            </div>
-                        <?php endforeach; ?>
-                        <div class="prev-app-item" style="margin-bottom: 1rem; padding: 1rem; border: 1px solid var(--border-color); border-radius: 4px;">
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label>Application Date</label>
-                                    <input type="date" name="prev_app_dates[]">
-                                </div>
-                                <div class="form-group" style="flex: 2;">
-                                    <label>Name Used</label>
-                                    <input type="text" name="prev_app_names[]" placeholder="Add new application...">
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <button type="button" class="btn btn-secondary btn-small" onclick="addPrevApp()">Add Another Application</button>
-                </div>
-                <?php endif; ?>
 
                 <div class="detail-section">
                     <h2>Subsidized Housing</h2>
@@ -548,25 +520,12 @@ include 'header.php';
                 container.appendChild(newItem);
             }
             
-            // Add previous application
-            function addPrevApp() {
-                const container = document.getElementById('prev_apps');
-                const newItem = document.createElement('div');
-                newItem.className = 'prev-app-item';
-                newItem.style.cssText = 'margin-bottom: 1rem; padding: 1rem; border: 1px solid var(--border-color); border-radius: 4px;';
-                newItem.innerHTML = `
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Application Date</label>
-                            <input type="date" name="prev_app_dates[]">
-                        </div>
-                        <div class="form-group" style="flex: 2;">
-                            <label>Name Used</label>
-                            <input type="text" name="prev_app_names[]" placeholder="Add new application...">
-                        </div>
-                    </div>
-                `;
-                container.appendChild(newItem);
+            // Remove household member
+            function removeHouseholdMember(button) {
+                if (confirm('Are you sure you want to delete this household member?')) {
+                    const memberItem = button.closest('.household-member-item');
+                    memberItem.remove();
+                }
             }
             
             // Phone formatting (same as signup.php)
@@ -725,7 +684,7 @@ include 'header.php';
             </div>
             <?php endif; ?>
 
-            <div class="detail-section">
+            <div class="detail-section" id="visit-history">
                 <h2>Visit History</h2>
                 <?php if (count($visits) > 0): ?>
                     <div style="margin-bottom: 1.5rem;">
@@ -961,5 +920,63 @@ include 'header.php';
         </div>
     <?php endif; ?>
 </div>
+
+<style>
+.action-dropdown {
+    position: relative;
+    display: inline-block;
+}
+
+.action-dropdown button {
+    cursor: pointer;
+}
+
+.action-dropdown-menu {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    background-color: var(--white);
+    box-shadow: var(--shadow-lg);
+    border-radius: 4px;
+    min-width: 160px;
+    padding: 0.5rem 0;
+    margin-top: 0.25rem;
+    list-style: none;
+    z-index: 1000;
+    white-space: nowrap;
+}
+
+.action-dropdown-menu::before {
+    content: '';
+    position: absolute;
+    top: -10px;
+    left: 0;
+    right: 0;
+    height: 10px;
+    background: transparent;
+}
+
+.action-dropdown:hover .action-dropdown-menu,
+.action-dropdown-menu:hover {
+    display: block;
+}
+
+.action-dropdown-menu li {
+    margin: 0;
+}
+
+.action-dropdown-menu a {
+    display: block;
+    padding: 0.5rem 1rem;
+    color: var(--text-color);
+    text-decoration: none;
+    transition: background-color 0.2s;
+}
+
+.action-dropdown-menu a:hover {
+    background-color: var(--light-bg);
+}
+</style>
 
 <?php include 'footer.php'; ?>

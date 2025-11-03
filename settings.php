@@ -65,6 +65,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (isset($_POST['theme_color'])) {
                 setSetting('theme_color', $_POST['theme_color']);
             }
+            
+            if (isset($_POST['voucher_prefix'])) {
+                setSetting('voucher_prefix', $_POST['voucher_prefix']);
+            }
         }
         
         // Save advanced mode settings
@@ -107,6 +111,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             if (isset($_POST['theme_color'])) {
                 setSetting('theme_color', $_POST['theme_color']);
+            }
+            
+            if (isset($_POST['voucher_prefix'])) {
+                setSetting('voucher_prefix', $_POST['voucher_prefix']);
             }
         }
         

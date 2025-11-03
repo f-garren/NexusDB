@@ -163,14 +163,14 @@ include 'header.php';
                             <td><?php echo htmlspecialchars($customer['city'] . ', ' . $customer['state']); ?></td>
                             <td><?php echo date('M d, Y g:i A', strtotime($customer['signup_date'])); ?></td>
                             <td><?php echo $customer['visit_count']; ?></td>
-                            <td>
+                            <td style="white-space: nowrap;">
                                 <a href="customer_view.php?id=<?php echo $customer['id']; ?>" class="btn btn-small">View</a>
-                                <div class="action-dropdown" style="display: inline-block; position: relative;">
-                                    <button class="btn btn-small btn-primary" style="position: relative;">Record Visit <ion-icon name="chevron-down" style="font-size: 0.8rem; vertical-align: middle;"></ion-icon></button>
-                                    <ul class="action-dropdown-menu" style="display: none; position: absolute; top: 100%; left: 0; background-color: var(--white); box-shadow: var(--shadow-lg); border-radius: 4px; min-width: 160px; padding: 0.5rem 0; margin-top: 0.25rem; list-style: none; z-index: 1000;">
-                                        <li><a href="visits_food.php?customer_id=<?php echo $customer['id']; ?>" style="display: block; padding: 0.5rem 1rem; color: var(--text-color); text-decoration: none;">Food Visit</a></li>
-                                        <li><a href="visits_money.php?customer_id=<?php echo $customer['id']; ?>" style="display: block; padding: 0.5rem 1rem; color: var(--text-color); text-decoration: none;">Money Visit</a></li>
-                                        <li><a href="visits_voucher.php?customer_id=<?php echo $customer['id']; ?>" style="display: block; padding: 0.5rem 1rem; color: var(--text-color); text-decoration: none;">Voucher Visit</a></li>
+                                <div class="action-dropdown">
+                                    <button type="button" class="btn btn-small btn-primary">Record Visit <ion-icon name="chevron-down"></ion-icon></button>
+                                    <ul class="action-dropdown-menu">
+                                        <li><a href="visits_food.php?customer_id=<?php echo $customer['id']; ?>">Food Visit</a></li>
+                                        <li><a href="visits_money.php?customer_id=<?php echo $customer['id']; ?>">Money Visit</a></li>
+                                        <li><a href="visits_voucher.php?customer_id=<?php echo $customer['id']; ?>">Voucher Visit</a></li>
                                     </ul>
                                 </div>
                             </td>
@@ -193,10 +193,19 @@ include 'header.php';
 .action-dropdown {
     position: relative;
     display: inline-block;
+    vertical-align: middle;
+    margin-left: 0.5rem;
 }
 
 .action-dropdown button {
     cursor: pointer;
+    border: none;
+}
+
+.action-dropdown button ion-icon {
+    font-size: 0.8rem;
+    vertical-align: middle;
+    margin-left: 0.25rem;
 }
 
 .action-dropdown-menu {
@@ -210,6 +219,8 @@ include 'header.php';
     min-width: 160px;
     padding: 0.5rem 0;
     margin-top: 0.25rem;
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
     list-style: none;
     z-index: 1000;
     white-space: nowrap;
@@ -219,10 +230,11 @@ include 'header.php';
     content: '';
     position: absolute;
     top: -10px;
-    left: 0;
-    right: 0;
+    left: -10px;
+    right: -10px;
     height: 10px;
     background: transparent;
+    pointer-events: auto;
 }
 
 .action-dropdown:hover .action-dropdown-menu,
