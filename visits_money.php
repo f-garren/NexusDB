@@ -181,10 +181,11 @@ include 'header.php';
         </div>
 
         <form method="POST" action="" class="visit-form">
-            <div class="form-group">
+            <div class="form-group" style="position: relative;">
                 <label for="customer_search">Search <?php echo htmlspecialchars(getCustomerTerm('Customer')); ?> <span class="required">*</span></label>
                 <input type="text" id="customer_search" placeholder="Type <?php echo strtolower(getCustomerTerm('customer')); ?> name or phone..." autocomplete="off" value="<?php echo $customer ? htmlspecialchars($customer['name']) : ''; ?>">
                 <input type="hidden" id="customer_id" name="customer_id" value="<?php echo $customer ? $customer['id'] : ''; ?>" required>
+                <div id="customer_results" class="search-results"></div>
             </div>
             
             <?php if ($customer): ?>
@@ -257,11 +258,14 @@ function checkEligibility(customerId, visitType) {
 }
 
 if (customerSearch) {
+    const customerResults = document.getElementById('customer_results');
+    
     customerSearch.addEventListener('input', function() {
         clearTimeout(searchTimeout);
         const query = this.value.trim();
         
         if (query.length < 2) {
+            customerResults.innerHTML = '';
             customerIdInput.value = '';
             const errorDiv = document.getElementById('eligibility_errors');
             if (errorDiv) errorDiv.innerHTML = '';
@@ -272,15 +276,39 @@ if (customerSearch) {
             fetch(`customer_search.php?q=${encodeURIComponent(query)}`)
                 .then(response => response.json())
                 .then(data => {
-                    // Don't auto-select, redirect to search page
-                    if (data.length > 0) {
-                        window.location.href = `customers.php?search=${encodeURIComponent(query)}`;
+                    customerResults.innerHTML = '';
+                    if (data.length === 0) {
+                        customerResults.innerHTML = '<div class="no-results">No <?php echo strtolower(getCustomerTermPlural('customers')); ?> found</div>';
+                        return;
                     }
+                    
+                    data.forEach(customer => {
+                        const div = document.createElement('div');
+                        div.className = 'customer-result';
+                        div.innerHTML = `
+                            <strong>${customer.name}</strong><br>
+                            <small>${customer.phone} - ${customer.city || ''}, ${customer.state || ''}</small>
+                        `;
+                        div.addEventListener('click', () => {
+                            customerIdInput.value = customer.id;
+                            customerSearch.value = customer.name;
+                            customerResults.innerHTML = '';
+                            window.location.href = `visits_money.php?customer_id=${customer.id}`;
+                        });
+                        customerResults.appendChild(div);
+                    });
                 })
                 .catch(error => {
                     console.error('Search error:', error);
                 });
-        }, 500);
+        }, 300);
+    });
+    
+    // Hide results when clicking outside
+    document.addEventListener('click', function(e) {
+        if (!customerSearch.contains(e.target) && !customerResults.contains(e.target)) {
+            customerResults.innerHTML = '';
+        }
     });
 }
 
