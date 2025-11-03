@@ -111,7 +111,6 @@ CREATE TABLE IF NOT EXISTS `vouchers` (
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `customer_id` (`customer_id`),
-  KEY `voucher_code` (`voucher_code`),
   KEY `status` (`status`),
   CONSTRAINT `vouchers_customer_fk` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
