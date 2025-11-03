@@ -51,13 +51,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_submit'])) {
         }
         
         // Generate unique voucher code
-        $voucher_code = 'VCH-' . strtoupper(substr(md5(time() . $customer_id . rand()), 0, 8));
+        $voucher_prefix = getSetting('voucher_prefix', 'VCH-');
+        $voucher_code = $voucher_prefix . strtoupper(substr(md5(time() . $customer_id . rand()), 0, 8));
         
         // Check if code exists (unlikely but possible)
         $stmt = $db->prepare("SELECT id FROM vouchers WHERE voucher_code = ?");
         $stmt->execute([$voucher_code]);
         while ($stmt->fetch()) {
-            $voucher_code = 'VCH-' . strtoupper(substr(md5(time() . $customer_id . rand()), 0, 8));
+            $voucher_code = $voucher_prefix . strtoupper(substr(md5(time() . $customer_id . rand()), 0, 8));
             $stmt->execute([$voucher_code]);
         }
         

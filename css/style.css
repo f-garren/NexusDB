@@ -99,12 +99,26 @@ body {
     border-radius: 4px;
     min-width: 180px;
     padding: 0.5rem 0;
-    margin-top: 0.5rem;
+    margin-top: 0;
+    padding-top: 1rem;
     list-style: none;
     z-index: 1000;
 }
 
-.nav-dropdown:hover .nav-dropdown-menu {
+/* Add invisible bridge above menu to prevent dropdown from closing when moving mouse */
+.nav-dropdown-menu::before {
+    content: '';
+    position: absolute;
+    top: -15px;
+    left: -10px;
+    right: -10px;
+    height: 15px;
+    background: transparent;
+    pointer-events: auto;
+}
+
+.nav-dropdown:hover .nav-dropdown-menu,
+.nav-dropdown-menu:hover {
     display: block;
 }
 

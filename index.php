@@ -12,25 +12,13 @@ $total_customers = $stmt->fetch()['total'];
 $stmt = $db->query("SELECT COUNT(*) as total FROM customers WHERE DATE(signup_date) >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)");
 $recent_customers = $stmt->fetch()['total'];
 
-// Food visits today
-$stmt = $db->query("SELECT COUNT(*) as total FROM visits WHERE visit_type = 'food' AND DATE(visit_date) = CURDATE()");
-$food_visits_today = $stmt->fetch()['total'];
-
 // Food visits this month
 $stmt = $db->query("SELECT COUNT(*) as total FROM visits WHERE visit_type = 'food' AND MONTH(visit_date) = MONTH(CURDATE()) AND YEAR(visit_date) = YEAR(CURDATE())");
 $food_visits_month = $stmt->fetch()['total'];
 
-// Money visits today
-$stmt = $db->query("SELECT COUNT(*) as total FROM visits WHERE visit_type = 'money' AND DATE(visit_date) = CURDATE()");
-$money_visits_today = $stmt->fetch()['total'];
-
 // Money visits this month
 $stmt = $db->query("SELECT COUNT(*) as total FROM visits WHERE visit_type = 'money' AND MONTH(visit_date) = MONTH(CURDATE()) AND YEAR(visit_date) = YEAR(CURDATE())");
 $money_visits_month = $stmt->fetch()['total'];
-
-// Voucher visits today
-$stmt = $db->query("SELECT COUNT(*) as total FROM visits WHERE visit_type = 'voucher' AND DATE(visit_date) = CURDATE()");
-$voucher_visits_today = $stmt->fetch()['total'];
 
 // Voucher visits this month
 $stmt = $db->query("SELECT COUNT(*) as total FROM visits WHERE visit_type = 'voucher' AND MONTH(visit_date) = MONTH(CURDATE()) AND YEAR(visit_date) = YEAR(CURDATE())");
@@ -66,14 +54,6 @@ include 'header.php';
         <div class="stat-card">
             <div class="stat-icon"><ion-icon name="restaurant"></ion-icon></div>
             <div class="stat-info">
-                <h3><?php echo number_format($food_visits_today); ?></h3>
-                <p>Food Visits Today</p>
-            </div>
-        </div>
-        
-        <div class="stat-card">
-            <div class="stat-icon"><ion-icon name="restaurant"></ion-icon></div>
-            <div class="stat-info">
                 <h3><?php echo number_format($food_visits_month); ?></h3>
                 <p>Food Visits This Month</p>
             </div>
@@ -82,24 +62,8 @@ include 'header.php';
         <div class="stat-card">
             <div class="stat-icon"><ion-icon name="cash"></ion-icon></div>
             <div class="stat-info">
-                <h3><?php echo number_format($money_visits_today); ?></h3>
-                <p>Money Visits Today</p>
-            </div>
-        </div>
-        
-        <div class="stat-card">
-            <div class="stat-icon"><ion-icon name="cash"></ion-icon></div>
-            <div class="stat-info">
                 <h3><?php echo number_format($money_visits_month); ?></h3>
                 <p>Money Visits This Month</p>
-            </div>
-        </div>
-        
-        <div class="stat-card">
-            <div class="stat-icon"><ion-icon name="ticket"></ion-icon></div>
-            <div class="stat-info">
-                <h3><?php echo number_format($voucher_visits_today); ?></h3>
-                <p>Voucher Visits Today</p>
             </div>
         </div>
         

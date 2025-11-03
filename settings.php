@@ -11,6 +11,7 @@ $customer_term = getSetting('customer_term', 'Customer');
 $customer_term_plural = getSetting('customer_term_plural', 'Customers');
 $money_limit = intval(getSetting('money_distribution_limit', 3));
 $theme_color = getSetting('theme_color', '#2c5aa0');
+$voucher_prefix = getSetting('voucher_prefix', 'VCH-');
 
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -209,6 +210,12 @@ include 'header.php';
                             <label for="shop_name">Shop/Store Name (for Voucher Redemption)</label>
                             <input type="text" id="shop_name" name="shop_name" value="<?php echo htmlspecialchars($shop_name); ?>" placeholder="Enter shop/store name">
                             <small class="help-text">Name of the shop where vouchers can be redeemed</small>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="voucher_prefix">Voucher Code Prefix</label>
+                            <input type="text" id="voucher_prefix" name="voucher_prefix" value="<?php echo htmlspecialchars($voucher_prefix); ?>" placeholder="e.g., VCH-, VOUCHER-, etc." maxlength="20">
+                            <small class="help-text">Prefix used for all voucher codes (e.g., "VCH-" results in codes like "VCH-XXXXXXXX")</small>
                         </div>
                     </div>
                     

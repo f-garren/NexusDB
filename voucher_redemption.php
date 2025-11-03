@@ -73,7 +73,7 @@ include 'header.php';
         <form method="POST" action="">
             <div class="form-group">
                 <label for="voucher_code">Voucher Code <span class="required">*</span></label>
-                <input type="text" id="voucher_code" name="voucher_code" value="<?php echo htmlspecialchars($voucher_code); ?>" placeholder="Enter voucher code (e.g., VCH-XXXXXXXX)" required autofocus>
+                <input type="text" id="voucher_code" name="voucher_code" value="<?php echo htmlspecialchars($voucher_code); ?>" placeholder="Enter voucher code (e.g., VCH-XXXXXXXX)" required autofocus style="margin-bottom: 1rem;">
                 <button type="submit" class="btn btn-primary">Check Voucher</button>
             </div>
         </form>

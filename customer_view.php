@@ -2,7 +2,135 @@
 require_once 'config.php';
 
 $customer_id = $_GET['id'] ?? 0;
+$edit_mode = isset($_GET['edit']) && $_GET['edit'] == '1';
+$error = '';
+$success = '';
 $db = getDB();
+
+// Handle form submission
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_customer'])) {
+    try {
+        $db->beginTransaction();
+        
+        $p = $_POST;
+        
+        // Format phone number
+        $phone_digits = preg_replace('/[^0-9]/', '', $p['phone']);
+        if (strlen($phone_digits) >= 10) {
+            $phone_number = substr($phone_digits, -10);
+            $country_code = strlen($phone_digits) > 10 ? substr($phone_digits, 0, -10) : '1';
+            $phone = '+' . $country_code . ' (' . substr($phone_number, 0, 3) . ') ' . substr($phone_number, 3, 3) . '-' . substr($phone_number, 6);
+        } else {
+            $phone = $p['phone'];
+        }
+        
+        // Update customer
+        $stmt = $db->prepare("UPDATE customers SET name = ?, address = ?, city = ?, state = ?, zip = ?, phone = ?, description_of_need = ?, applied_before = ? WHERE id = ?");
+        $stmt->execute([
+            $p['name'],
+            $p['address'],
+            $p['city'],
+            $p['state'],
+            $p['zip'],
+            $phone,
+            $p['description_of_need'] ?? null,
+            $p['applied_before'] ?? 'no',
+            $customer_id
+        ]);
+        
+        // Handle signup date override
+        if (!empty($p['override_signup_date']) && !empty($p['manual_signup_datetime'])) {
+            $signup_timestamp = date('Y-m-d H:i:s', strtotime($p['manual_signup_datetime']));
+            $stmt = $db->prepare("UPDATE customers SET signup_date = ? WHERE id = ?");
+            $stmt->execute([$signup_timestamp, $customer_id]);
+        }
+        
+        // Delete existing household members and insert new ones
+        $stmt = $db->prepare("DELETE FROM household_members WHERE customer_id = ?");
+        $stmt->execute([$customer_id]);
+        
+        if (!empty($p['household_names'])) {
+            foreach ($p['household_names'] as $idx => $name) {
+                if (!empty(trim($name))) {
+                    $stmt = $db->prepare("INSERT INTO household_members (customer_id, name, birthdate, relationship) VALUES (?, ?, ?, ?)");
+                    $birthdate = !empty($p['household_birthdates'][$idx]) ? date('Y-m-d', strtotime($p['household_birthdates'][$idx])) : date('Y-m-d');
+                    $stmt->execute([
+                        $customer_id,
+                        trim($name),
+                        $birthdate,
+                        $p['household_relationships'][$idx] ?? ''
+                    ]);
+                }
+            }
+        }
+        
+        // Delete existing previous applications and insert new ones
+        $stmt = $db->prepare("DELETE FROM previous_applications WHERE customer_id = ?");
+        $stmt->execute([$customer_id]);
+        
+        if (!empty($p['prev_app_dates'])) {
+            foreach ($p['prev_app_dates'] as $idx => $date) {
+                if (!empty(trim($date)) || !empty(trim($p['prev_app_names'][$idx] ?? ''))) {
+                    $stmt = $db->prepare("INSERT INTO previous_applications (customer_id, application_date, name_used) VALUES (?, ?, ?)");
+                    $app_date = !empty($date) ? date('Y-m-d', strtotime($date)) : null;
+                    $stmt->execute([
+                        $customer_id,
+                        $app_date,
+                        $p['prev_app_names'][$idx] ?? null
+                    ]);
+                }
+            }
+        }
+        
+        // Update or create subsidized housing
+        $stmt = $db->prepare("DELETE FROM subsidized_housing WHERE customer_id = ?");
+        $stmt->execute([$customer_id]);
+        
+        if (!empty($p['subsidized_housing']) && $p['subsidized_housing'] === 'yes') {
+            $rent_amount = !empty($p['rent_amount']) ? floatval($p['rent_amount']) : null;
+            $stmt = $db->prepare("INSERT INTO subsidized_housing (customer_id, in_subsidized_housing, rent_amount) VALUES (?, 'yes', ?)");
+            $stmt->execute([$customer_id, $rent_amount]);
+        } else {
+            $stmt = $db->prepare("INSERT INTO subsidized_housing (customer_id, in_subsidized_housing) VALUES (?, 'no')");
+            $stmt->execute([$customer_id]);
+        }
+        
+        // Update or create income
+        $child_support = floatval($p['child_support'] ?? 0);
+        $pension = floatval($p['pension'] ?? 0);
+        $wages = floatval($p['wages'] ?? 0);
+        $ss_ssd_ssi = floatval($p['ss_ssd_ssi'] ?? 0);
+        $unemployment = floatval($p['unemployment'] ?? 0);
+        $food_stamps = floatval($p['food_stamps'] ?? 0);
+        $other = floatval($p['other'] ?? 0);
+        $total = $child_support + $pension + $wages + $ss_ssd_ssi + $unemployment + $food_stamps + $other;
+        
+        $stmt = $db->prepare("DELETE FROM income_sources WHERE customer_id = ?");
+        $stmt->execute([$customer_id]);
+        
+        $stmt = $db->prepare("INSERT INTO income_sources (customer_id, child_support, pension, wages, ss_ssd_ssi, unemployment, food_stamps, other, other_description, total_household_income) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        $stmt->execute([
+            $customer_id,
+            $child_support,
+            $pension,
+            $wages,
+            $ss_ssd_ssi,
+            $unemployment,
+            $food_stamps,
+            $other,
+            $p['other_description'] ?? null,
+            $total
+        ]);
+        
+        $db->commit();
+        $success = "Customer information updated successfully!";
+        $edit_mode = false; // Switch back to view mode
+        
+    } catch (Exception $e) {
+        $db->rollBack();
+        $error = "Error updating customer: " . $e->getMessage();
+    }
+}
 
 $stmt = $db->prepare("SELECT * FROM customers WHERE id = ?");
 $stmt->execute([$customer_id]);
@@ -96,248 +224,711 @@ include 'header.php';
     <div class="page-header">
         <div class="header-actions">
             <a href="customers.php" class="btn btn-secondary">← Back to Customers</a>
-            <a href="visits.php?customer_id=<?php echo $customer_id; ?>" class="btn btn-primary">Record Visit</a>
+            <?php if (!$edit_mode): ?>
+                <a href="customer_view.php?id=<?php echo $customer_id; ?>&edit=1" class="btn btn-primary">
+                    <ion-icon name="create"></ion-icon> Edit <?php echo htmlspecialchars(getCustomerTerm('Customer')); ?>
+                </a>
+                <a href="visits.php?customer_id=<?php echo $customer_id; ?>" class="btn btn-primary">Record Visit</a>
+            <?php else: ?>
+                <a href="customer_view.php?id=<?php echo $customer_id; ?>" class="btn btn-secondary">
+                    <ion-icon name="eye"></ion-icon> View Mode
+                </a>
+            <?php endif; ?>
         </div>
         <h1><?php echo htmlspecialchars($customer['name']); ?></h1>
     </div>
 
-    <!-- Visit Status Alert -->
-    <?php if ($days_since_last_food_visit !== null): ?>
-        <?php if ($days_since_last_food_visit < $min_days_between): ?>
-            <div class="alert alert-warning">
-                <ion-icon name="warning"></ion-icon> Last food visit was <?php echo $days_since_last_food_visit; ?> days ago. Minimum <?php echo $min_days_between; ?> days required between food visits.
+    <?php if ($error): ?>
+        <div class="alert alert-error"><?php echo $error; ?></div>
+    <?php endif; ?>
+    
+    <?php if ($success): ?>
+        <div class="alert alert-success"><?php echo $success; ?></div>
+    <?php endif; ?>
+
+    <!-- Visit Status Alert (only show in view mode) -->
+    <?php if (!$edit_mode): ?>
+        <?php if ($days_since_last_food_visit !== null): ?>
+            <?php if ($days_since_last_food_visit < $min_days_between): ?>
+                <div class="alert alert-warning">
+                    <ion-icon name="warning"></ion-icon> Last food visit was <?php echo $days_since_last_food_visit; ?> days ago. Minimum <?php echo $min_days_between; ?> days required between food visits.
+                </div>
+            <?php endif; ?>
+        <?php endif; ?>
+        
+        <?php if ($food_visits_this_month >= $visits_per_month): ?>
+            <div class="alert alert-error">
+                <ion-icon name="close-circle"></ion-icon> Monthly food visit limit reached (<?php echo $food_visits_this_month; ?>/<?php echo $visits_per_month; ?>)
+            </div>
+        <?php elseif ($food_visits_this_month > 0): ?>
+            <div class="alert alert-info">
+                <ion-icon name="information-circle"></ion-icon> <?php echo $food_visits_this_month; ?>/<?php echo $visits_per_month; ?> food visits this month
+            </div>
+        <?php endif; ?>
+        
+        <?php if ($food_visits_this_year >= $visits_per_year): ?>
+            <div class="alert alert-error">
+                <ion-icon name="close-circle"></ion-icon> Yearly food visit limit reached (<?php echo $food_visits_this_year; ?>/<?php echo $visits_per_year; ?>)
+            </div>
+        <?php elseif ($food_visits_this_year > 0): ?>
+            <div class="alert alert-info">
+                <ion-icon name="information-circle"></ion-icon> <?php echo $food_visits_this_year; ?>/<?php echo $visits_per_year; ?> food visits this year
             </div>
         <?php endif; ?>
     <?php endif; ?>
-    
-    <?php if ($food_visits_this_month >= $visits_per_month): ?>
-        <div class="alert alert-error">
-            <ion-icon name="close-circle"></ion-icon> Monthly food visit limit reached (<?php echo $food_visits_this_month; ?>/<?php echo $visits_per_month; ?>)
-        </div>
-    <?php elseif ($food_visits_this_month > 0): ?>
-        <div class="alert alert-info">
-            <ion-icon name="information-circle"></ion-icon> <?php echo $food_visits_this_month; ?>/<?php echo $visits_per_month; ?> food visits this month
-        </div>
-    <?php endif; ?>
-    
-    <?php if ($food_visits_this_year >= $visits_per_year): ?>
-        <div class="alert alert-error">
-            <ion-icon name="close-circle"></ion-icon> Yearly food visit limit reached (<?php echo $food_visits_this_year; ?>/<?php echo $visits_per_year; ?>)
-        </div>
-    <?php elseif ($food_visits_this_year > 0): ?>
-        <div class="alert alert-info">
-            <ion-icon name="information-circle"></ion-icon> <?php echo $food_visits_this_year; ?>/<?php echo $visits_per_year; ?> food visits this year
-        </div>
-    <?php endif; ?>
 
-    <div class="customer-details-grid">
-        <div class="detail-section">
-            <h2>Basic Information</h2>
-            <table class="info-table">
-                <tr>
-                    <th>Signup Date & Time:</th>
-                    <td><?php echo date('F d, Y \a\t g:i A', strtotime($customer['signup_date'])); ?></td>
-                </tr>
-                <tr>
-                    <th>Name:</th>
-                    <td><?php echo htmlspecialchars($customer['name']); ?></td>
-                </tr>
-                <tr>
-                    <th>Address:</th>
-                    <td><?php echo htmlspecialchars($customer['address']); ?></td>
-                </tr>
-                <tr>
-                    <th>City, State, ZIP:</th>
-                    <td><?php echo htmlspecialchars($customer['city'] . ', ' . $customer['state'] . ' ' . $customer['zip']); ?></td>
-                </tr>
-                <tr>
-                    <th>Phone:</th>
-                    <td><?php echo htmlspecialchars($customer['phone']); ?></td>
-                </tr>
-                <?php if ($customer['description_of_need']): ?>
-                <tr>
-                    <th>Description of Need:</th>
-                    <td><?php echo nl2br(htmlspecialchars($customer['description_of_need'])); ?></td>
-                </tr>
-                <?php endif; ?>
-            </table>
-        </div>
-
-        <?php if (count($household) > 0): ?>
-        <div class="detail-section">
-            <h2>Household Members</h2>
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>Name</th>
-                        <th>Birthdate</th>
-                        <th>Relationship</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($household as $member): ?>
-                        <tr>
-                            <td><?php echo htmlspecialchars($member['name']); ?></td>
-                            <td><?php echo date('M d, Y', strtotime($member['birthdate'])); ?></td>
-                            <td><?php echo htmlspecialchars($member['relationship']); ?></td>
-                        </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
-        <?php endif; ?>
-
-        <?php if ($customer['applied_before'] === 'yes' && count($prev_apps) > 0): ?>
-        <div class="detail-section">
-            <h2>Previous Applications</h2>
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>Date</th>
-                        <th>Name Used</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($prev_apps as $app): ?>
-                        <tr>
-                            <td><?php echo $app['application_date'] ? date('M d, Y', strtotime($app['application_date'])) : 'N/A'; ?></td>
-                            <td><?php echo htmlspecialchars($app['name_used']); ?></td>
-                        </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
-        <?php endif; ?>
-
-        <?php if ($housing && $housing['in_subsidized_housing'] === 'yes'): ?>
-        <div class="detail-section">
-            <h2>Subsidized Housing</h2>
-            <table class="info-table">
-                <tr>
-                    <th>In Subsidized Housing:</th>
-                    <td>Yes</td>
-                </tr>
-                <?php if ($housing['rent_amount']): ?>
-                <tr>
-                    <th>Amount of Rent:</th>
-                    <td>$<?php echo number_format($housing['rent_amount'], 2); ?></td>
-                </tr>
-                <?php endif; ?>
-            </table>
-        </div>
-        <?php endif; ?>
-
-        <?php if ($income): ?>
-        <div class="detail-section">
-            <h2>Household Income</h2>
-            <table class="info-table">
-                <tr>
-                    <th>Child Support:</th>
-                    <td>$<?php echo number_format($income['child_support'], 2); ?></td>
-                </tr>
-                <tr>
-                    <th>Pension:</th>
-                    <td>$<?php echo number_format($income['pension'], 2); ?></td>
-                </tr>
-                <tr>
-                    <th>Wages:</th>
-                    <td>$<?php echo number_format($income['wages'], 2); ?></td>
-                </tr>
-                <tr>
-                    <th>SS/SSD/SSI:</th>
-                    <td>$<?php echo number_format($income['ss_ssd_ssi'], 2); ?></td>
-                </tr>
-                <tr>
-                    <th>Unemployment:</th>
-                    <td>$<?php echo number_format($income['unemployment'], 2); ?></td>
-                </tr>
-                <tr>
-                    <th>Food Stamps:</th>
-                    <td>$<?php echo number_format($income['food_stamps'], 2); ?></td>
-                </tr>
-                <tr>
-                    <th>Other:</th>
-                    <td>$<?php echo number_format($income['other'], 2); ?></td>
-                </tr>
-                <?php if ($income['other_description']): ?>
-                <tr>
-                    <th>Other Description:</th>
-                    <td><?php echo htmlspecialchars($income['other_description']); ?></td>
-                </tr>
-                <?php endif; ?>
-                <tr class="total-row">
-                    <th>Total Household Income:</th>
-                    <td><strong>$<?php echo number_format($income['total_household_income'], 2); ?></strong></td>
-                </tr>
-            </table>
-        </div>
-        <?php endif; ?>
-
-        <div class="detail-section">
-            <h2>Visit History</h2>
-            <?php if (count($visits) > 0): ?>
-                <div style="margin-bottom: 1rem;">
-                    <strong>Visit Summary:</strong>
-                    <?php 
-                    $visit_summary = [];
+    <?php if ($edit_mode): ?>
+        <!-- EDIT MODE -->
+        <form method="POST" action="" class="customer-edit-form">
+            <input type="hidden" name="save_customer" value="1">
+            
+            <div class="customer-details-grid">
+                <div class="detail-section">
+                    <h2>Basic Information</h2>
+                    <div class="form-group">
+                        <label for="signup_date">Signup Date & Time</label>
+                        <div class="checkbox-group">
+                            <label style="display: flex; align-items: center; gap: 0.5rem; font-weight: normal;">
+                                <input type="checkbox" id="override_signup_date" name="override_signup_date" value="1">
+                                <span>Override signup date/time</span>
+                            </label>
+                        </div>
+                        <div id="auto_signup_datetime">
+                            <input type="text" value="<?php echo date('F d, Y \a\t g:i A', strtotime($customer['signup_date'])); ?>" readonly class="readonly-field">
+                            <small class="help-text">Current signup date and time</small>
+                        </div>
+                        <div id="manual_signup_datetime" style="display: none;">
+                            <input type="datetime-local" id="manual_signup_datetime_input" name="manual_signup_datetime" value="<?php echo date('Y-m-d\TH:i', strtotime($customer['signup_date'])); ?>" class="datetime-input" tabindex="-1">
+                            <small class="help-text">Enter the actual signup date and time</small>
+                        </div>
+                    </div>
                     
-                    // Food visits - show total and this month/year
-                    if (!empty($visit_counts['food'])) {
-                        $visit_summary[] = "Food visits (total): " . $visit_counts['food'];
-                    }
-                    if ($food_visits_this_month > 0) {
-                        $visit_summary[] = "Food visits this month: {$food_visits_this_month}/{$visits_per_month}";
-                    }
-                    if ($food_visits_this_year > 0) {
-                        $visit_summary[] = "Food visits this year: {$food_visits_this_year}/{$visits_per_year}";
-                    }
+                    <div class="form-group">
+                        <label for="name">Name <span class="required">*</span></label>
+                        <input type="text" id="name" name="name" value="<?php echo htmlspecialchars($customer['name']); ?>" required>
+                    </div>
                     
-                    // Money visits with limit counter
-                    $money_limit = intval(getSetting('money_distribution_limit', 3));
-                    if (!empty($visit_counts['money'])) {
-                        // Get household money count
-                        $stmt = $db->prepare("SELECT COUNT(*) as count FROM visits v 
-                                           INNER JOIN household_members hm1 ON v.customer_id = hm1.customer_id
-                                           INNER JOIN household_members hm2 ON hm1.name = hm2.name
-                                           WHERE hm2.customer_id = ? AND v.visit_type = 'money'");
-                        $stmt->execute([$customer_id]);
-                        $household_money = $stmt->fetch()['count'];
-                        $visit_summary[] = "Money visits (household): {$household_money}/{$money_limit}";
-                    }
+                    <div class="form-group">
+                        <label for="address">Address <span class="required">*</span></label>
+                        <input type="text" id="address" name="address" value="<?php echo htmlspecialchars($customer['address']); ?>" required>
+                    </div>
                     
-                    if (!empty($visit_counts['voucher'])) {
-                        $visit_summary[] = "Voucher visits (total): " . $visit_counts['voucher'];
-                    }
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="city">City <span class="required">*</span></label>
+                            <input type="text" id="city" name="city" value="<?php echo htmlspecialchars($customer['city']); ?>" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="state">State <span class="required">*</span></label>
+                            <input type="text" id="state" name="state" value="<?php echo htmlspecialchars($customer['state']); ?>" maxlength="2" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="zip">ZIP <span class="required">*</span></label>
+                            <input type="text" id="zip" name="zip" value="<?php echo htmlspecialchars($customer['zip']); ?>" required>
+                        </div>
+                    </div>
                     
-                    echo !empty($visit_summary) ? implode(" | ", $visit_summary) : "No visits";
-                    ?>
+                    <div class="form-group">
+                        <label for="phone">Phone <span class="required">*</span></label>
+                        <input type="text" id="phone" name="phone" value="<?php echo htmlspecialchars($customer['phone']); ?>" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="description_of_need">Description of Need</label>
+                        <textarea id="description_of_need" name="description_of_need" rows="4"><?php echo htmlspecialchars($customer['description_of_need'] ?? ''); ?></textarea>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="applied_before">Applied Before?</label>
+                        <select id="applied_before" name="applied_before">
+                            <option value="no" <?php echo $customer['applied_before'] === 'no' ? 'selected' : ''; ?>>No</option>
+                            <option value="yes" <?php echo $customer['applied_before'] === 'yes' ? 'selected' : ''; ?>>Yes</option>
+                        </select>
+                    </div>
                 </div>
+
+                <div class="detail-section">
+                    <h2>Household Members</h2>
+                    <div id="household_members">
+                        <?php foreach ($household as $idx => $member): ?>
+                            <div class="household-member-item" style="margin-bottom: 1rem; padding: 1rem; border: 1px solid var(--border-color); border-radius: 4px;">
+                                <div class="form-row">
+                                    <div class="form-group" style="flex: 2;">
+                                        <label>Name</label>
+                                        <input type="text" name="household_names[]" value="<?php echo htmlspecialchars($member['name']); ?>">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Birthdate</label>
+                                        <input type="date" name="household_birthdates[]" value="<?php echo date('Y-m-d', strtotime($member['birthdate'])); ?>">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Relationship</label>
+                                        <input type="text" name="household_relationships[]" value="<?php echo htmlspecialchars($member['relationship']); ?>">
+                                    </div>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                        <div class="household-member-item" style="margin-bottom: 1rem; padding: 1rem; border: 1px solid var(--border-color); border-radius: 4px;">
+                            <div class="form-row">
+                                <div class="form-group" style="flex: 2;">
+                                    <label>Name</label>
+                                    <input type="text" name="household_names[]" placeholder="Add new member...">
+                                </div>
+                                <div class="form-group">
+                                    <label>Birthdate</label>
+                                    <input type="date" name="household_birthdates[]">
+                                </div>
+                                <div class="form-group">
+                                    <label>Relationship</label>
+                                    <input type="text" name="household_relationships[]" placeholder="e.g., Spouse, Child">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <button type="button" class="btn btn-secondary btn-small" onclick="addHouseholdMember()">Add Another Member</button>
+                </div>
+
+                <?php if ($customer['applied_before'] === 'yes' || count($prev_apps) > 0): ?>
+                <div class="detail-section">
+                    <h2>Previous Applications</h2>
+                    <div id="prev_apps">
+                        <?php foreach ($prev_apps as $idx => $app): ?>
+                            <div class="prev-app-item" style="margin-bottom: 1rem; padding: 1rem; border: 1px solid var(--border-color); border-radius: 4px;">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>Application Date</label>
+                                        <input type="date" name="prev_app_dates[]" value="<?php echo $app['application_date'] ? date('Y-m-d', strtotime($app['application_date'])) : ''; ?>">
+                                    </div>
+                                    <div class="form-group" style="flex: 2;">
+                                        <label>Name Used</label>
+                                        <input type="text" name="prev_app_names[]" value="<?php echo htmlspecialchars($app['name_used'] ?? ''); ?>">
+                                    </div>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                        <div class="prev-app-item" style="margin-bottom: 1rem; padding: 1rem; border: 1px solid var(--border-color); border-radius: 4px;">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Application Date</label>
+                                    <input type="date" name="prev_app_dates[]">
+                                </div>
+                                <div class="form-group" style="flex: 2;">
+                                    <label>Name Used</label>
+                                    <input type="text" name="prev_app_names[]" placeholder="Add new application...">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <button type="button" class="btn btn-secondary btn-small" onclick="addPrevApp()">Add Another Application</button>
+                </div>
+                <?php endif; ?>
+
+                <div class="detail-section">
+                    <h2>Subsidized Housing</h2>
+                    <div class="form-group">
+                        <label for="subsidized_housing">In Subsidized Housing?</label>
+                        <select id="subsidized_housing" name="subsidized_housing">
+                            <option value="no" <?php echo (!$housing || $housing['in_subsidized_housing'] === 'no') ? 'selected' : ''; ?>>No</option>
+                            <option value="yes" <?php echo ($housing && $housing['in_subsidized_housing'] === 'yes') ? 'selected' : ''; ?>>Yes</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="rent_amount_group" style="display: <?php echo ($housing && $housing['in_subsidized_housing'] === 'yes') ? 'block' : 'none'; ?>;">
+                        <label for="rent_amount">Amount of Rent</label>
+                        <input type="number" id="rent_amount" name="rent_amount" step="0.01" min="0" value="<?php echo $housing && $housing['rent_amount'] ? $housing['rent_amount'] : ''; ?>">
+                    </div>
+                </div>
+
+                <?php if ($income): ?>
+                <div class="detail-section">
+                    <h2>Household Income</h2>
+                    <div class="form-group">
+                        <label for="child_support">Child Support</label>
+                        <input type="number" id="child_support" name="child_support" step="0.01" min="0" value="<?php echo $income['child_support']; ?>">
+                    </div>
+                    <div class="form-group">
+                        <label for="pension">Pension</label>
+                        <input type="number" id="pension" name="pension" step="0.01" min="0" value="<?php echo $income['pension']; ?>">
+                    </div>
+                    <div class="form-group">
+                        <label for="wages">Wages</label>
+                        <input type="number" id="wages" name="wages" step="0.01" min="0" value="<?php echo $income['wages']; ?>">
+                    </div>
+                    <div class="form-group">
+                        <label for="ss_ssd_ssi">SS/SSD/SSI</label>
+                        <input type="number" id="ss_ssd_ssi" name="ss_ssd_ssi" step="0.01" min="0" value="<?php echo $income['ss_ssd_ssi']; ?>">
+                    </div>
+                    <div class="form-group">
+                        <label for="unemployment">Unemployment</label>
+                        <input type="number" id="unemployment" name="unemployment" step="0.01" min="0" value="<?php echo $income['unemployment']; ?>">
+                    </div>
+                    <div class="form-group">
+                        <label for="food_stamps">Food Stamps</label>
+                        <input type="number" id="food_stamps" name="food_stamps" step="0.01" min="0" value="<?php echo $income['food_stamps']; ?>">
+                    </div>
+                    <div class="form-group">
+                        <label for="other">Other</label>
+                        <input type="number" id="other" name="other" step="0.01" min="0" value="<?php echo $income['other']; ?>">
+                    </div>
+                    <div class="form-group">
+                        <label for="other_description">Other Description</label>
+                        <input type="text" id="other_description" name="other_description" value="<?php echo htmlspecialchars($income['other_description'] ?? ''); ?>">
+                    </div>
+                    <div class="form-group">
+                        <label>Total Household Income (calculated automatically)</label>
+                        <input type="text" id="total_income" readonly class="readonly-field" value="$0.00">
+                    </div>
+                </div>
+                <?php endif; ?>
+            </div>
+            
+            <div class="form-actions" style="margin-top: 2rem; padding-top: 2rem; border-top: 2px solid var(--border-color);">
+                <button type="submit" class="btn btn-primary btn-large">Save Changes</button>
+                <a href="customer_view.php?id=<?php echo $customer_id; ?>" class="btn btn-secondary btn-large">Cancel</a>
+            </div>
+        </form>
+        
+        <script>
+            // Handle signup date override
+            document.getElementById('override_signup_date').addEventListener('change', function() {
+                const manualDiv = document.getElementById('manual_signup_datetime');
+                const autoDiv = document.getElementById('auto_signup_datetime');
+                if (this.checked) {
+                    manualDiv.style.display = 'block';
+                    autoDiv.style.display = 'none';
+                } else {
+                    manualDiv.style.display = 'none';
+                    autoDiv.style.display = 'block';
+                }
+            });
+            
+            // Handle subsidized housing
+            document.getElementById('subsidized_housing').addEventListener('change', function() {
+                document.getElementById('rent_amount_group').style.display = this.value === 'yes' ? 'block' : 'none';
+            });
+            
+            // Calculate total income
+            function updateTotalIncome() {
+                const fields = ['child_support', 'pension', 'wages', 'ss_ssd_ssi', 'unemployment', 'food_stamps', 'other'];
+                let total = 0;
+                fields.forEach(field => {
+                    const value = parseFloat(document.getElementById(field).value) || 0;
+                    total += value;
+                });
+                document.getElementById('total_income').value = '$' + total.toFixed(2);
+            }
+            
+            ['child_support', 'pension', 'wages', 'ss_ssd_ssi', 'unemployment', 'food_stamps', 'other'].forEach(field => {
+                const el = document.getElementById(field);
+                if (el) el.addEventListener('input', updateTotalIncome);
+            });
+            updateTotalIncome();
+            
+            // Add household member
+            function addHouseholdMember() {
+                const container = document.getElementById('household_members');
+                const newItem = document.createElement('div');
+                newItem.className = 'household-member-item';
+                newItem.style.cssText = 'margin-bottom: 1rem; padding: 1rem; border: 1px solid var(--border-color); border-radius: 4px;';
+                newItem.innerHTML = `
+                    <div class="form-row">
+                        <div class="form-group" style="flex: 2;">
+                            <label>Name</label>
+                            <input type="text" name="household_names[]" placeholder="Member name...">
+                        </div>
+                        <div class="form-group">
+                            <label>Birthdate</label>
+                            <input type="date" name="household_birthdates[]">
+                        </div>
+                        <div class="form-group">
+                            <label>Relationship</label>
+                            <input type="text" name="household_relationships[]" placeholder="e.g., Spouse, Child">
+                        </div>
+                    </div>
+                `;
+                container.appendChild(newItem);
+            }
+            
+            // Add previous application
+            function addPrevApp() {
+                const container = document.getElementById('prev_apps');
+                const newItem = document.createElement('div');
+                newItem.className = 'prev-app-item';
+                newItem.style.cssText = 'margin-bottom: 1rem; padding: 1rem; border: 1px solid var(--border-color); border-radius: 4px;';
+                newItem.innerHTML = `
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Application Date</label>
+                            <input type="date" name="prev_app_dates[]">
+                        </div>
+                        <div class="form-group" style="flex: 2;">
+                            <label>Name Used</label>
+                            <input type="text" name="prev_app_names[]" placeholder="Add new application...">
+                        </div>
+                    </div>
+                `;
+                container.appendChild(newItem);
+            }
+            
+            // Phone formatting (same as signup.php)
+            document.getElementById('phone').addEventListener('blur', function() {
+                let phoneValue = this.value.replace(/[^0-9]/g, '');
+                if (phoneValue.length >= 10) {
+                    let phoneNumber = phoneValue.substring(phoneValue.length - 10);
+                    let countryCode = phoneValue.length > 10 ? phoneValue.substring(0, phoneValue.length - 10) : '1';
+                    let formatted = '+' + countryCode + ' (' + phoneNumber.substring(0, 3) + ') ' + phoneNumber.substring(3, 6) + '-' + phoneNumber.substring(6);
+                    this.value = formatted;
+                }
+            });
+        </script>
+    <?php else: ?>
+        <!-- VIEW MODE -->
+        <div class="customer-details-grid">
+            <div class="detail-section">
+                <h2>Basic Information</h2>
+                <table class="info-table">
+                    <tr>
+                        <th>Signup Date & Time:</th>
+                        <td><?php echo date('F d, Y \a\t g:i A', strtotime($customer['signup_date'])); ?></td>
+                    </tr>
+                    <tr>
+                        <th>Name:</th>
+                        <td><?php echo htmlspecialchars($customer['name']); ?></td>
+                    </tr>
+                    <tr>
+                        <th>Address:</th>
+                        <td><?php echo htmlspecialchars($customer['address']); ?></td>
+                    </tr>
+                    <tr>
+                        <th>City, State, ZIP:</th>
+                        <td><?php echo htmlspecialchars($customer['city'] . ', ' . $customer['state'] . ' ' . $customer['zip']); ?></td>
+                    </tr>
+                    <tr>
+                        <th>Phone:</th>
+                        <td><?php echo htmlspecialchars($customer['phone']); ?></td>
+                    </tr>
+                    <?php if ($customer['description_of_need']): ?>
+                    <tr>
+                        <th>Description of Need:</th>
+                        <td><?php echo nl2br(htmlspecialchars($customer['description_of_need'])); ?></td>
+                    </tr>
+                    <?php endif; ?>
+                </table>
+            </div>
+
+            <?php if (count($household) > 0): ?>
+            <div class="detail-section">
+                <h2>Household Members</h2>
                 <table class="data-table">
                     <thead>
                         <tr>
-                            <th>Date</th>
-                            <th>Visit Type</th>
-                            <th>Amount</th>
-                            <th>Notes</th>
+                            <th>Name</th>
+                            <th>Birthdate</th>
+                            <th>Relationship</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <?php foreach ($visits as $visit): ?>
+                        <?php foreach ($household as $member): ?>
                             <tr>
-                                <td><?php echo date('M d, Y \a\t g:i A', strtotime($visit['visit_date'])); ?></td>
-                                <td><?php echo ucfirst($visit['visit_type'] ?? 'food'); ?></td>
-                                <td><?php echo ($visit['visit_type'] === 'money' && !empty($visit['amount'])) ? '$' . number_format($visit['amount'], 2) : '-'; ?></td>
-                                <td><?php echo nl2br(htmlspecialchars($visit['notes'] ?? '')); ?></td>
+                                <td><?php echo htmlspecialchars($member['name']); ?></td>
+                                <td><?php echo date('M d, Y', strtotime($member['birthdate'])); ?></td>
+                                <td><?php echo htmlspecialchars($member['relationship']); ?></td>
                             </tr>
                         <?php endforeach; ?>
                     </tbody>
                 </table>
-            <?php else: ?>
-                <p class="no-data">No visits recorded yet.</p>
+            </div>
             <?php endif; ?>
+
+            <?php if ($customer['applied_before'] === 'yes' && count($prev_apps) > 0): ?>
+            <div class="detail-section">
+                <h2>Previous Applications</h2>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Name Used</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($prev_apps as $app): ?>
+                            <tr>
+                                <td><?php echo $app['application_date'] ? date('M d, Y', strtotime($app['application_date'])) : 'N/A'; ?></td>
+                                <td><?php echo htmlspecialchars($app['name_used']); ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+            <?php endif; ?>
+
+            <?php if ($housing && $housing['in_subsidized_housing'] === 'yes'): ?>
+            <div class="detail-section">
+                <h2>Subsidized Housing</h2>
+                <table class="info-table">
+                    <tr>
+                        <th>In Subsidized Housing:</th>
+                        <td>Yes</td>
+                    </tr>
+                    <?php if ($housing['rent_amount']): ?>
+                    <tr>
+                        <th>Amount of Rent:</th>
+                        <td>$<?php echo number_format($housing['rent_amount'], 2); ?></td>
+                    </tr>
+                    <?php endif; ?>
+                </table>
+            </div>
+            <?php endif; ?>
+
+            <?php if ($income): ?>
+            <div class="detail-section">
+                <h2>Household Income</h2>
+                <table class="info-table">
+                    <tr>
+                        <th>Child Support:</th>
+                        <td>$<?php echo number_format($income['child_support'], 2); ?></td>
+                    </tr>
+                    <tr>
+                        <th>Pension:</th>
+                        <td>$<?php echo number_format($income['pension'], 2); ?></td>
+                    </tr>
+                    <tr>
+                        <th>Wages:</th>
+                        <td>$<?php echo number_format($income['wages'], 2); ?></td>
+                    </tr>
+                    <tr>
+                        <th>SS/SSD/SSI:</th>
+                        <td>$<?php echo number_format($income['ss_ssd_ssi'], 2); ?></td>
+                    </tr>
+                    <tr>
+                        <th>Unemployment:</th>
+                        <td>$<?php echo number_format($income['unemployment'], 2); ?></td>
+                    </tr>
+                    <tr>
+                        <th>Food Stamps:</th>
+                        <td>$<?php echo number_format($income['food_stamps'], 2); ?></td>
+                    </tr>
+                    <tr>
+                        <th>Other:</th>
+                        <td>$<?php echo number_format($income['other'], 2); ?></td>
+                    </tr>
+                    <?php if ($income['other_description']): ?>
+                    <tr>
+                        <th>Other Description:</th>
+                        <td><?php echo htmlspecialchars($income['other_description']); ?></td>
+                    </tr>
+                    <?php endif; ?>
+                    <tr class="total-row">
+                        <th>Total Household Income:</th>
+                        <td><strong>$<?php echo number_format($income['total_household_income'], 2); ?></strong></td>
+                    </tr>
+                </table>
+            </div>
+            <?php endif; ?>
+
+            <div class="detail-section">
+                <h2>Visit History</h2>
+                <?php if (count($visits) > 0): ?>
+                    <div style="margin-bottom: 1.5rem;">
+                        <strong>Visit Summary:</strong>
+                        <?php 
+                        $visit_summary = [];
+                        
+                        // Food visits - show total and this month/year
+                        if (!empty($visit_counts['food'])) {
+                            $visit_summary[] = "Food visits (total): " . $visit_counts['food'];
+                        }
+                        if ($food_visits_this_month > 0) {
+                            $visit_summary[] = "Food visits this month: {$food_visits_this_month}/{$visits_per_month}";
+                        }
+                        if ($food_visits_this_year > 0) {
+                            $visit_summary[] = "Food visits this year: {$food_visits_this_year}/{$visits_per_year}";
+                        }
+                        
+                        // Money visits with limit counter
+                        $money_limit = intval(getSetting('money_distribution_limit', 3));
+                        if (!empty($visit_counts['money'])) {
+                            // Get household money count
+                            $stmt = $db->prepare("SELECT COUNT(*) as count FROM visits v 
+                                               INNER JOIN household_members hm1 ON v.customer_id = hm1.customer_id
+                                               INNER JOIN household_members hm2 ON hm1.name = hm2.name
+                                               WHERE hm2.customer_id = ? AND v.visit_type = 'money'");
+                            $stmt->execute([$customer_id]);
+                            $household_money = $stmt->fetch()['count'];
+                            $visit_summary[] = "Money visits (household): {$household_money}/{$money_limit}";
+                        }
+                        
+                        if (!empty($visit_counts['voucher'])) {
+                            $visit_summary[] = "Voucher visits (total): " . $visit_counts['voucher'];
+                        }
+                        
+                        echo !empty($visit_summary) ? implode(" | ", $visit_summary) : "No visits";
+                        ?>
+                    </div>
+                    
+                    <!-- Visit Type Filter -->
+                    <div style="margin-bottom: 1.5rem;">
+                        <label for="visit_type_filter" style="display: inline-block; margin-right: 0.5rem; font-weight: bold;">Filter by Visit Type:</label>
+                        <select id="visit_type_filter" style="padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px; font-size: 1rem;">
+                            <option value="all">All Types</option>
+                            <option value="food">Food</option>
+                            <option value="money">Money</option>
+                            <option value="voucher">Voucher</option>
+                        </select>
+                    </div>
+                    
+                    <?php 
+                    // Separate visits by type
+                    $food_visits = array_filter($visits, function($v) { return ($v['visit_type'] ?? 'food') === 'food'; });
+                    $money_visits = array_filter($visits, function($v) { return ($v['visit_type'] ?? 'food') === 'money'; });
+                    $voucher_visits = array_filter($visits, function($v) { return ($v['visit_type'] ?? 'food') === 'voucher'; });
+                    ?>
+                    
+                    <!-- Food Visits Section -->
+                    <div class="visit-type-section" data-visit-type="food" style="margin-bottom: 2rem;">
+                        <h3 style="margin-bottom: 1rem; color: var(--primary-color);">Food Visits</h3>
+                        <?php if (count($food_visits) > 0): ?>
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Notes</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($food_visits as $visit): ?>
+                                        <tr>
+                                            <td><?php echo date('M d, Y \a\t g:i A', strtotime($visit['visit_date'])); ?></td>
+                                            <td><?php echo nl2br(htmlspecialchars($visit['notes'] ?? '')); ?></td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        <?php else: ?>
+                            <p class="no-data">No food visits recorded yet.</p>
+                        <?php endif; ?>
+                    </div>
+                    
+                    <!-- Money Visits Section -->
+                    <div class="visit-type-section" data-visit-type="money" style="margin-bottom: 2rem;">
+                        <h3 style="margin-bottom: 1rem; color: var(--primary-color);">Money Visits</h3>
+                        <?php if (count($money_visits) > 0): ?>
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Amount</th>
+                                        <th>Notes</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($money_visits as $visit): ?>
+                                        <tr>
+                                            <td><?php echo date('M d, Y \a\t g:i A', strtotime($visit['visit_date'])); ?></td>
+                                            <td><?php echo !empty($visit['amount']) ? '$' . number_format($visit['amount'], 2) : '-'; ?></td>
+                                            <td><?php echo nl2br(htmlspecialchars($visit['notes'] ?? '')); ?></td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        <?php else: ?>
+                            <p class="no-data">No money visits recorded yet.</p>
+                        <?php endif; ?>
+                    </div>
+                    
+                    <!-- Voucher Visits Section -->
+                    <div class="visit-type-section" data-visit-type="voucher" style="margin-bottom: 2rem;">
+                        <h3 style="margin-bottom: 1rem; color: var(--primary-color);">Voucher Visits</h3>
+                        <?php if (count($voucher_visits) > 0): ?>
+                            <?php
+                            // Get voucher details for voucher visits
+                            $voucher_details = [];
+                            foreach ($voucher_visits as $visit) {
+                                $stmt = $db->prepare("SELECT * FROM vouchers WHERE customer_id = ? AND DATE(issued_date) = DATE(?) ORDER BY issued_date DESC LIMIT 1");
+                                $stmt->execute([$customer_id, $visit['visit_date']]);
+                                $voucher = $stmt->fetch();
+                                if ($voucher) {
+                                    $voucher_details[$visit['id']] = $voucher;
+                                }
+                            }
+                            ?>
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Voucher Code</th>
+                                        <th>Amount</th>
+                                        <th>Status</th>
+                                        <th>Notes</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($voucher_visits as $visit): ?>
+                                        <tr>
+                                            <td><?php echo date('M d, Y \a\t g:i A', strtotime($visit['visit_date'])); ?></td>
+                                            <td>
+                                                <?php 
+                                                if (isset($voucher_details[$visit['id']])) {
+                                                    echo '<strong>' . htmlspecialchars($voucher_details[$visit['id']]['voucher_code']) . '</strong>';
+                                                } else {
+                                                    echo '-';
+                                                }
+                                                ?>
+                                            </td>
+                                            <td>
+                                                <?php 
+                                                if (isset($voucher_details[$visit['id']])) {
+                                                    echo '$' . number_format($voucher_details[$visit['id']]['amount'], 2);
+                                                } else {
+                                                    echo '-';
+                                                }
+                                                ?>
+                                            </td>
+                                            <td>
+                                                <?php 
+                                                if (isset($voucher_details[$visit['id']])) {
+                                                    $status = $voucher_details[$visit['id']]['status'];
+                                                    if ($status === 'active') {
+                                                        echo '<span style="color: green;">Active</span>';
+                                                    } elseif ($status === 'redeemed') {
+                                                        echo '<span style="color: blue;">Redeemed</span>';
+                                                    } else {
+                                                        echo '<span style="color: red;">Expired</span>';
+                                                    }
+                                                } else {
+                                                    echo '-';
+                                                }
+                                                ?>
+                                            </td>
+                                            <td><?php echo nl2br(htmlspecialchars($visit['notes'] ?? '')); ?></td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        <?php else: ?>
+                            <p class="no-data">No voucher visits recorded yet.</p>
+                        <?php endif; ?>
+                    </div>
+                    
+                    <script>
+                        document.getElementById('visit_type_filter').addEventListener('change', function() {
+                            const filterValue = this.value;
+                            const sections = document.querySelectorAll('.visit-type-section');
+                            
+                            sections.forEach(section => {
+                                if (filterValue === 'all' || section.dataset.visitType === filterValue) {
+                                    section.style.display = 'block';
+                                } else {
+                                    section.style.display = 'none';
+                                }
+                            });
+                        });
+                    </script>
+                <?php else: ?>
+                    <p class="no-data">No visits recorded yet.</p>
+                <?php endif; ?>
+            </div>
         </div>
-    </div>
+    <?php endif; ?>
 </div>
 
 <?php include 'footer.php'; ?>
-
