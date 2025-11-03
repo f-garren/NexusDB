@@ -13,8 +13,13 @@ $where_conditions = [];
 $params = [];
 
 if (!empty($search)) {
-    $where_conditions[] = "(c.name LIKE ? OR c.phone LIKE ? OR c.address LIKE ?)";
+    // Search in customer fields and household member names
+    $where_conditions[] = "(c.name LIKE ? OR c.phone LIKE ? OR c.address LIKE ? OR c.city LIKE ? OR c.state LIKE ? 
+                            OR EXISTS (SELECT 1 FROM household_members hm WHERE hm.customer_id = c.id AND hm.name LIKE ?))";
     $search_term = "%$search%";
+    $params[] = $search_term;
+    $params[] = $search_term;
+    $params[] = $search_term;
     $params[] = $search_term;
     $params[] = $search_term;
     $params[] = $search_term;
@@ -160,7 +165,14 @@ include 'header.php';
                             <td><?php echo $customer['visit_count']; ?></td>
                             <td>
                                 <a href="customer_view.php?id=<?php echo $customer['id']; ?>" class="btn btn-small">View</a>
-                                <a href="visits.php?customer_id=<?php echo $customer['id']; ?>" class="btn btn-small btn-primary">Record Visit</a>
+                                <div class="action-dropdown" style="display: inline-block; position: relative;">
+                                    <button class="btn btn-small btn-primary" style="position: relative;">Record Visit <ion-icon name="chevron-down" style="font-size: 0.8rem; vertical-align: middle;"></ion-icon></button>
+                                    <ul class="action-dropdown-menu" style="display: none; position: absolute; top: 100%; left: 0; background-color: var(--white); box-shadow: var(--shadow-lg); border-radius: 4px; min-width: 160px; padding: 0.5rem 0; margin-top: 0.25rem; list-style: none; z-index: 1000;">
+                                        <li><a href="visits_food.php?customer_id=<?php echo $customer['id']; ?>" style="display: block; padding: 0.5rem 1rem; color: var(--text-color); text-decoration: none;">Food Visit</a></li>
+                                        <li><a href="visits_money.php?customer_id=<?php echo $customer['id']; ?>" style="display: block; padding: 0.5rem 1rem; color: var(--text-color); text-decoration: none;">Money Visit</a></li>
+                                        <li><a href="visits_voucher.php?customer_id=<?php echo $customer['id']; ?>" style="display: block; padding: 0.5rem 1rem; color: var(--text-color); text-decoration: none;">Voucher Visit</a></li>
+                                    </ul>
+                                </div>
                             </td>
                         </tr>
                     <?php endforeach; ?>
@@ -176,6 +188,64 @@ include 'header.php';
         </div>
     <?php endif; ?>
 </div>
+
+<style>
+.action-dropdown {
+    position: relative;
+    display: inline-block;
+}
+
+.action-dropdown button {
+    cursor: pointer;
+}
+
+.action-dropdown-menu {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    background-color: var(--white);
+    box-shadow: var(--shadow-lg);
+    border-radius: 4px;
+    min-width: 160px;
+    padding: 0.5rem 0;
+    margin-top: 0.25rem;
+    list-style: none;
+    z-index: 1000;
+    white-space: nowrap;
+}
+
+.action-dropdown-menu::before {
+    content: '';
+    position: absolute;
+    top: -10px;
+    left: 0;
+    right: 0;
+    height: 10px;
+    background: transparent;
+}
+
+.action-dropdown:hover .action-dropdown-menu,
+.action-dropdown-menu:hover {
+    display: block;
+}
+
+.action-dropdown-menu li {
+    margin: 0;
+}
+
+.action-dropdown-menu a {
+    display: block;
+    padding: 0.5rem 1rem;
+    color: var(--text-color);
+    text-decoration: none;
+    transition: background-color 0.2s;
+}
+
+.action-dropdown-menu a:hover {
+    background-color: var(--light-bg);
+}
+</style>
 
 <?php include 'footer.php'; ?>
 

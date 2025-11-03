@@ -3,6 +3,38 @@ require_once 'config.php';
 
 $db = getDB();
 $page_title = "Reports";
+$error = '';
+$success = '';
+
+// Handle voucher revocation
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['revoke_voucher'])) {
+    $voucher_code = trim($_POST['voucher_code'] ?? '');
+    
+    if (!empty($voucher_code)) {
+        try {
+            // Check if voucher exists and is active
+            $stmt = $db->prepare("SELECT status FROM vouchers WHERE voucher_code = ?");
+            $stmt->execute([$voucher_code]);
+            $voucher = $stmt->fetch();
+            
+            if (!$voucher) {
+                $error = "Voucher not found.";
+            } elseif ($voucher['status'] !== 'active') {
+                $error = "Only active vouchers can be revoked.";
+            } else {
+                // Revoke voucher by setting status to expired
+                $stmt = $db->prepare("UPDATE vouchers SET status = 'expired' WHERE voucher_code = ?");
+                $stmt->execute([$voucher_code]);
+                $success = "Voucher {$voucher_code} has been revoked successfully.";
+            }
+        } catch (Exception $e) {
+            $error = "Error revoking voucher: " . $e->getMessage();
+        }
+    } else {
+        $error = "Invalid voucher code.";
+    }
+}
+
 include 'header.php';
 
 // Get statistics
@@ -49,6 +81,7 @@ $total_redeemed_amount = $stmt->fetch()['total'] ?? 0;
 $filter_search = $_GET['voucher_search'] ?? '';
 $filter_issued_date = $_GET['voucher_issued_date'] ?? '';
 $filter_redeemed_date = $_GET['voucher_redeemed_date'] ?? '';
+$filter_status = $_GET['voucher_status'] ?? '';
 
 // Build voucher query with filters
 $where_conditions = [];
@@ -86,6 +119,11 @@ if (!empty($filter_redeemed_date)) {
     $params[] = $filter_redeemed_date;
 }
 
+if (!empty($filter_status)) {
+    $where_conditions[] = "v.status = ?";
+    $params[] = $filter_status;
+}
+
 $where_clause = !empty($where_conditions) ? "WHERE " . implode(" AND ", $where_conditions) : "";
 
 // Get vouchers with filters
@@ -114,6 +152,14 @@ if (!empty($params)) {
             <a href="money_export.php" class="btn btn-primary">Export Money Visits to CSV</a>
         </div>
     </div>
+
+    <?php if ($error): ?>
+        <div class="alert alert-error"><?php echo $error; ?></div>
+    <?php endif; ?>
+    
+    <?php if ($success): ?>
+        <div class="alert alert-success"><?php echo $success; ?></div>
+    <?php endif; ?>
 
         <div class="stats-grid">
         <div class="stat-card">
@@ -249,10 +295,20 @@ if (!empty($params)) {
                     </div>
                     
                     <div class="filter-group">
+                        <label for="voucher_status">Status</label>
+                        <select name="voucher_status" id="voucher_status">
+                            <option value="">All Statuses</option>
+                            <option value="active" <?php echo $filter_status === 'active' ? 'selected' : ''; ?>>Active</option>
+                            <option value="redeemed" <?php echo $filter_status === 'redeemed' ? 'selected' : ''; ?>>Redeemed</option>
+                            <option value="expired" <?php echo $filter_status === 'expired' ? 'selected' : ''; ?>>Expired</option>
+                        </select>
+                    </div>
+                    
+                    <div class="filter-group">
                         <label>&nbsp;</label>
                         <div>
                             <button type="submit" class="btn btn-primary">Filter</button>
-                            <?php if (!empty($filter_search) || !empty($filter_issued_date) || !empty($filter_redeemed_date)): ?>
+                            <?php if (!empty($filter_search) || !empty($filter_issued_date) || !empty($filter_redeemed_date) || !empty($filter_status)): ?>
                                 <a href="reports.php" class="btn btn-secondary">Clear</a>
                             <?php endif; ?>
                         </div>
@@ -290,7 +346,18 @@ if (!empty($params)) {
                                     <span style="color: red;">Expired</span>
                                 <?php endif; ?>
                             </td>
-                            <td><?php echo $voucher['redeemed_date'] ? date('M d, Y g:i A', strtotime($voucher['redeemed_date'])) : '-'; ?></td>
+                            <td>
+                                <?php if ($voucher['redeemed_date']): ?>
+                                    <?php echo date('M d, Y g:i A', strtotime($voucher['redeemed_date'])); ?>
+                                <?php elseif ($voucher['status'] === 'active'): ?>
+                                    <form method="POST" action="" style="display: inline;" onsubmit="return confirm('Are you sure you want to revoke this voucher? This action cannot be undone.');">
+                                        <input type="hidden" name="voucher_code" value="<?php echo htmlspecialchars($voucher['voucher_code']); ?>">
+                                        <button type="submit" name="revoke_voucher" class="btn btn-small" style="background-color: #d32f2f; color: white;">Revoke</button>
+                                    </form>
+                                <?php else: ?>
+                                    -
+                                <?php endif; ?>
+                            </td>
                         </tr>
                     <?php endforeach; ?>
                 </tbody>

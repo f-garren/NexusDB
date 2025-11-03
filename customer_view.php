@@ -747,13 +747,25 @@ include 'header.php';
                         // Money visits with limit counter
                         $money_limit = intval(getSetting('money_distribution_limit', 3));
                         if (!empty($visit_counts['money'])) {
-                            // Get household money count
-                            $stmt = $db->prepare("SELECT COUNT(*) as count FROM visits v 
-                                               INNER JOIN household_members hm1 ON v.customer_id = hm1.customer_id
+                            // Get household money count - first get all customer IDs that share household members
+                            $stmt = $db->prepare("SELECT DISTINCT hm2.customer_id 
+                                               FROM household_members hm1
                                                INNER JOIN household_members hm2 ON hm1.name = hm2.name
-                                               WHERE hm2.customer_id = ? AND v.visit_type = 'money'");
+                                               WHERE hm1.customer_id = ?");
                             $stmt->execute([$customer_id]);
-                            $household_money = $stmt->fetch()['count'];
+                            $household_customer_ids = $stmt->fetchAll(PDO::FETCH_COLUMN);
+                            
+                            if (!empty($household_customer_ids)) {
+                                // Count distinct money visits for all household customers
+                                $placeholders = str_repeat('?,', count($household_customer_ids) - 1) . '?';
+                                $stmt = $db->prepare("SELECT COUNT(DISTINCT v.id) as count 
+                                                   FROM visits v 
+                                                   WHERE v.customer_id IN ($placeholders) AND v.visit_type = 'money'");
+                                $stmt->execute($household_customer_ids);
+                                $household_money = $stmt->fetch()['count'];
+                            } else {
+                                $household_money = $visit_counts['money'] ?? 0;
+                            }
                             $visit_summary[] = "Money visits (household): {$household_money}/{$money_limit}";
                         }
                         
@@ -840,14 +852,33 @@ include 'header.php';
                         <h3 style="margin-bottom: 1rem; color: var(--primary-color);">Voucher Visits</h3>
                         <?php if (count($voucher_visits) > 0): ?>
                             <?php
-                            // Get voucher details for voucher visits
+                            // Get all vouchers for this customer first
+                            $stmt = $db->prepare("SELECT * FROM vouchers WHERE customer_id = ? ORDER BY issued_date DESC");
+                            $stmt->execute([$customer_id]);
+                            $all_vouchers = $stmt->fetchAll();
+                            
+                            // Match vouchers to visits by finding the closest issued_date to visit_date
                             $voucher_details = [];
                             foreach ($voucher_visits as $visit) {
-                                $stmt = $db->prepare("SELECT * FROM vouchers WHERE customer_id = ? AND DATE(issued_date) = DATE(?) ORDER BY issued_date DESC LIMIT 1");
-                                $stmt->execute([$customer_id, $visit['visit_date']]);
-                                $voucher = $stmt->fetch();
-                                if ($voucher) {
-                                    $voucher_details[$visit['id']] = $voucher;
+                                $visit_timestamp = strtotime($visit['visit_date']);
+                                $best_match = null;
+                                $smallest_diff = null;
+                                
+                                foreach ($all_vouchers as $voucher) {
+                                    $voucher_timestamp = strtotime($voucher['issued_date']);
+                                    $diff = abs($visit_timestamp - $voucher_timestamp);
+                                    
+                                    // Match if issued within 5 minutes of visit (vouchers are created right after visits)
+                                    if ($diff <= 300) {
+                                        if ($best_match === null || $diff < $smallest_diff) {
+                                            $best_match = $voucher;
+                                            $smallest_diff = $diff;
+                                        }
+                                    }
+                                }
+                                
+                                if ($best_match) {
+                                    $voucher_details[$visit['id']] = $best_match;
                                 }
                             }
                             ?>
